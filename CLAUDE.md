@@ -1,30 +1,36 @@
 # i0 — Icon Search MCP Server
 
-MCP server that serves 200k+ icons from 150+ open-source collections. Built with xmcp framework, Turso (libSQL), Drizzle ORM, FTS5 full-text search, and Gemini semantic embeddings.
+Next.js app with xmcp MCP server. Serves 200k+ icons from 150+ open-source collections. Built with xmcp (Next.js adapter), Turso (libSQL), Drizzle ORM, FTS5 full-text search, and Gemini semantic embeddings.
 
 ## Commands
 
 ```bash
 bun run seed              # Seed Turso DB from @iconify/json (required before first run)
 bun run seed:embeddings   # Generate vector embeddings for all icons (requires GOOGLE_API_KEY)
-bun run build             # Build for production (rspack via xmcp)
-bun run dev               # Dev server on :3001
-bun run start             # Run production build (bun dist/http.js)
+bun run build             # Build for production (xmcp build → next build)
+bun run dev               # Dev server on :3000 (xmcp dev + next dev --turbopack)
+bun run start             # Run production build (next start)
 ```
 
 ## Architecture
+
+Next.js App Router with xmcp running as a route handler at `/mcp`. The xmcp adapter is built to `.xmcp/adapter/` and imported by `src/app/mcp/route.ts`.
 
 **Runtime has zero dependency on `@iconify/json`** (395MB). Icon SVG bodies are stored in Turso at seed time. At runtime, `@iconify/utils` renders SVGs from DB data. `@iconify/json` is a devDependency only.
 
 ### Key files
 
-- `xmcp.config.ts` — xmcp bundler/server configuration
+- `xmcp.config.ts` — xmcp config with `experimental: { adapter: "nextjs" }`
+- `next.config.ts` — Next.js config (externalizes `@libsql/client`)
+- `src/app/mcp/route.ts` — MCP endpoint (imports `xmcpHandler` from `@xmcp/adapter`)
+- `src/app/page.tsx` — Landing page
 - `src/lib/db/schema.ts` — Drizzle table definitions (`collections`, `icons`)
 - `src/lib/db/connection.ts` — Turso libSQL client + Drizzle ORM connection
 - `src/lib/db/seed.ts` — Seeds DB from @iconify/json, builds FTS5 index with porter stemmer
 - `src/lib/db/seed-embeddings.ts` — Generates Gemini embeddings for all icons, creates DiskANN vector index
 - `src/lib/icons/svg.ts` — Renders SVG from DB body/width/height using @iconify/utils
 - `src/lib/icons/react.ts` — Converts SVG to typed React component string (regex-based, following icones project pattern)
+- `src/lib/icons/search.ts` — Hybrid FTS5 + semantic vector search
 - `src/tools/` — MCP tools (search-icons, get-icon, list-collections)
 - `src/prompts/` — Agent guidance prompts
 - `src/resources/` — MCP resources (currently empty)
@@ -46,7 +52,7 @@ Hybrid search combining FTS5 keyword matching and semantic vector search:
 
 1. **FTS5** — BM25-ranked keyword matches with porter stemming
 2. **Semantic** — Gemini `gemini-embedding-001` embeddings (256d) with Turso's native `vector_top_k` DiskANN search
-3. **Merge** — FTS results first, semantic results fill remaining slots (deduplicated by fullName)
+3. **Merge** — RRF (Reciprocal Rank Fusion) combining both result sets
 
 FTS and semantic search run in parallel. Semantic search gracefully degrades if embeddings aren't seeded or the API is unavailable.
 
@@ -75,6 +81,8 @@ Tool handlers return `{ content: [{ type: "text", text }], structuredContent?, i
 
 ## Gotchas
 
+- **xmcp adapter dir bug**: `xmcp build` doesn't create `.xmcp/adapter/` before writing to it. The build script works around this with `mkdir -p .xmcp/adapter && xmcp build`.
+- **`@libsql/client` must be externalized**: Added to `serverExternalPackages` in `next.config.ts` (native bindings can't be webpack-bundled).
 - **Re-seeding drops all tables**: `seed.ts` drops and recreates tables. No incremental updates. Must re-run `seed:embeddings` after re-seeding.
 - **Embedding seeding is slow**: ~50 min for 303k icons on free tier (100 icons/batch, 1s delay). Skips already-embedded icons.
 - **FTS5 porter stemmer**: "arrows" matches "arrow", "deleting" matches "delete". Query sanitizer strips FTS5 special chars and appends `*` to last token for prefix matching.
