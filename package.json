@@ -1,0 +1,30 @@
+{
+  "name": "i0",
+  "version": "0.1.0",
+  "description": "An xmcp application with tool syntax",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "xmcp build",
+    "dev": "xmcp dev",
+    "start": "bun dist/http.js",
+    "seed": "bun run src/lib/db/seed.ts",
+    "seed:embeddings": "bun run src/lib/db/seed-embeddings.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^3.0.29",
+    "@iconify/utils": "3.1.0",
+    "@libsql/client": "^0.17.0",
+    "ai": "^6.0.86",
+    "drizzle-orm": "0.45.1",
+    "xmcp": "0.6.4",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@iconify/json": "2.2.439",
+    "@iconify/types": "2.0.0",
+    "@types/bun": "^1.3.9",
+    "drizzle-kit": "0.31.9"
+  }
+}
