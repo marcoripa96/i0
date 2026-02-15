@@ -22,9 +22,9 @@ export function StickySearch({ children }: { children: React.ReactNode }) {
     <>
       <div ref={sentinelRef} className="h-0 w-full" />
       <div
-        className={`sticky top-0 z-50 transition-[background-color,border-color] duration-200 ${
+        className={`sticky top-0 z-50 py-3 transition-[background-color,border-color] duration-200 ${
           stuck
-            ? "border-b border-border bg-background/95 py-3 backdrop-blur-sm -mx-[calc(50vw-50%)] px-[calc(50vw-50%)]"
+            ? "border-b border-border bg-background/95 backdrop-blur-sm -mx-[calc(50vw-50%)] px-[calc(50vw-50%)]"
             : "border-b border-transparent"
         }`}
       >
