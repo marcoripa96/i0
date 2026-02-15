@@ -1,15 +1,14 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { useTheme } from "./theme-provider";
 
 export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <Button variant="ghost" size="sm" onClick={toggleTheme} className="gap-1.5 font-mono text-xs tracking-tight text-muted-foreground hover:text-foreground">
-      <span className="inline-block size-2.5 rounded-full bg-foreground" />
+    <button onClick={toggleTheme} className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer">
+      <span className="inline-block size-1.5 rounded-full bg-foreground" />
       [{theme}]
-    </Button>
+    </button>
   );
 }

@@ -22,6 +22,20 @@
       "when": 1771174176060,
       "tag": "0002_add-better-auth-tables",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1771175762181,
+      "tag": "0003_add-api-tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1771177095457,
+      "tag": "0004_add-daily-usage",
+      "breakpoints": true
     }
   ]
 }

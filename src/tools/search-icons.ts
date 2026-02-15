@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { eq, and, sql, type SQL } from "drizzle-orm";
-import { type ToolMetadata, type InferSchema } from "xmcp";
+import { type ToolMetadata, type InferSchema, type ToolExtraArguments } from "xmcp";
 import { db } from "../lib/db/connection";
-import { icons, collections } from "../lib/db/schema";
+import { icons, collections, user, dailyUsage } from "../lib/db/schema";
 import { hybridSearch, type SearchResult } from "../lib/icons/search";
 
 export const schema = {
@@ -72,14 +72,66 @@ function buildResponse(rows: SearchResult[], maxResults: number, skip: number) {
   };
 }
 
-export default async function searchIcons({
-  query,
-  collection,
-  category,
-  license,
-  limit,
-  offset,
-}: InferSchema<typeof schema>) {
+function todayDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function checkAndIncrementUsage(userId: string): Promise<string | null> {
+  const userData = await db
+    .select({ searchLimit: user.searchLimit })
+    .from(user)
+    .where(eq(user.id, userId))
+    .get();
+
+  if (!userData) return "User not found.";
+
+  const today = todayDate();
+
+  const usage = await db
+    .select({ searchCount: dailyUsage.searchCount })
+    .from(dailyUsage)
+    .where(and(eq(dailyUsage.userId, userId), eq(dailyUsage.date, today)))
+    .get();
+
+  const currentCount = usage?.searchCount ?? 0;
+
+  if (currentCount >= userData.searchLimit) {
+    return `Daily search limit reached (${userData.searchLimit}). Resets tomorrow.`;
+  }
+
+  await db
+    .insert(dailyUsage)
+    .values({ userId, date: today, searchCount: 1 })
+    .onConflictDoUpdate({
+      target: [dailyUsage.userId, dailyUsage.date],
+      set: { searchCount: sql`${dailyUsage.searchCount} + 1` },
+    });
+
+  return null;
+}
+
+export default async function searchIcons(
+  {
+    query,
+    collection,
+    category,
+    license,
+    limit,
+    offset,
+  }: InferSchema<typeof schema>,
+  extra: ToolExtraArguments,
+) {
+  const userId = extra.authInfo?.extra?.userId as string | undefined;
+  if (userId) {
+    const error = await checkAndIncrementUsage(userId);
+    if (error) {
+      return {
+        content: [{ type: "text" as const, text: error }],
+        isError: true,
+      };
+    }
+  }
+
   const maxResults = limit ?? 20;
   const skip = offset ?? 0;
 
