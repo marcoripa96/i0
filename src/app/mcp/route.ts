@@ -17,6 +17,7 @@ const verifyToken: VerifyToken = async (_req, bearerToken) => {
   return {
     token: bearerToken,
     clientId: result.userId,
+    scopes: [],
     extra: { userId: result.userId },
   };
 };

@@ -23,7 +23,7 @@ export function SignInButton() {
 export function UserMenuPopover({
   user,
 }: {
-  user: { name: string; email: string; image: string | null };
+  user: { name: string; email: string; image?: string | null };
 }) {
   return (
     <Popover>
