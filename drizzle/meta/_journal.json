@@ -8,6 +8,13 @@
       "when": 1771085014417,
       "tag": "0000_giant_bruce_banner",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1771171414000,
+      "tag": "0001_add_vector_index",
+      "breakpoints": true
     }
   ]
 }

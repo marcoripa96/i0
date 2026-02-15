@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { eq, and, type SQL } from "drizzle-orm";
+import { eq, and, sql, type SQL } from "drizzle-orm";
 import { type ToolMetadata, type InferSchema } from "xmcp";
 import { db } from "../lib/db/connection";
 import { icons, collections } from "../lib/db/schema";
@@ -17,6 +17,10 @@ export const schema = {
   category: z.string().optional().describe(
     "Filter by icon category within a collection (e.g. 'Arrows', 'Navigation'). " +
     "Categories vary by collection."
+  ),
+  license: z.string().optional().describe(
+    "Filter by license title (e.g. 'MIT', 'Apache 2.0', 'CC BY 4.0'). " +
+    "Use list-licenses to discover available license titles."
   ),
   limit: z.number().min(1).max(100).default(20).optional().describe(
     "Max results to return (default 20, max 100)"
@@ -72,6 +76,7 @@ export default async function searchIcons({
   query,
   collection,
   category,
+  license,
   limit,
   offset,
 }: InferSchema<typeof schema>) {
@@ -87,15 +92,17 @@ export default async function searchIcons({
 
   // Browse mode: no query, list icons from a collection
   if (!query) {
-    if (!collection) {
+    if (!collection && !license) {
       return {
-        content: [{ type: "text" as const, text: "Provide a search query, or pass a collection prefix to browse its icons." }],
+        content: [{ type: "text" as const, text: "Provide a search query, a collection prefix, or a license filter to browse icons." }],
         isError: true,
       };
     }
 
-    const conditions: SQL[] = [eq(icons.prefix, collection)];
+    const conditions: SQL[] = [];
+    if (collection) conditions.push(eq(icons.prefix, collection));
     if (category) conditions.push(eq(icons.category, category));
+    if (license) conditions.push(sql`json_extract(${collections.license}, '$.title') = ${license}`);
 
     const rows = (
       await db
@@ -126,7 +133,7 @@ export default async function searchIcons({
   }
 
   // Search mode: hybrid FTS + semantic
-  const rows = await hybridSearch(query, collection, category, maxResults, skip);
+  const rows = await hybridSearch(query, collection, category, maxResults, skip, license);
 
   if (rows === null) {
     return {

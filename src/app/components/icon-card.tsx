@@ -1,15 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { motion, AnimatePresence } from "motion/react";
+import { toast } from "sonner";
 import { getIconCode } from "@/app/actions";
+import { useCopyFormat } from "./copy-format-provider";
 
 type IconData = {
   fullName: string;
@@ -46,120 +41,111 @@ function InlineSvg({
   );
 }
 
+function CheckIcon({ size }: { size: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
 export function IconCard({ icon }: { icon: IconData }) {
-  const [open, setOpen] = useState(false);
-  const [code, setCode] = useState<string | null>(null);
-  const [format, setFormat] = useState<"svg" | "react">("svg");
+  const { format } = useCopyFormat();
   const [copied, setCopied] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  function handleOpen() {
-    setOpen(true);
-    setCode(null);
-    setCopied(false);
-    loadCode("svg");
-  }
+  function handleClick() {
+    if (isPending) return;
 
-  function loadCode(fmt: "svg" | "react") {
-    setFormat(fmt);
-    setCopied(false);
     startTransition(async () => {
-      const result = await getIconCode(icon.fullName, fmt);
-      setCode(result);
-    });
-  }
-
-  async function handleCopy() {
-    if (!code) return;
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  return (
-    <>
-      <button
-        onClick={handleOpen}
-        className="group flex flex-col items-center gap-2.5 bg-background p-4 transition-colors hover:bg-accent"
-      >
-        <div className="flex h-10 w-10 items-center justify-center text-foreground">
+      const code = await getIconCode(icon.fullName, format);
+      if (!code) return;
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      toast(`copied ${icon.fullName}`, {
+        icon: (
           <InlineSvg
             body={icon.body}
             width={icon.width}
             height={icon.height}
-            size={24}
-            className="fill-current"
+            size={16}
+            className="fill-current shrink-0"
           />
-        </div>
-        <div className="w-full min-w-0 text-center">
-          <p className="truncate font-mono text-[10px] text-muted-foreground group-hover:text-foreground">
-            {icon.name}
+        ),
+      });
+      setTimeout(() => setCopied(false), 1000);
+    });
+  }
+
+  return (
+    <motion.button
+      onClick={handleClick}
+      whileTap={{ scale: 0.92 }}
+      transition={{ duration: 0.1 }}
+      className={`group flex flex-col items-center gap-2.5 border border-border bg-background p-4 -mb-px -mr-px ${
+        copied
+          ? "bg-primary text-primary-foreground"
+          : isPending
+            ? "opacity-50"
+            : "hover:bg-accent"
+      }`}
+    >
+      <div className="relative flex h-10 w-10 items-center justify-center">
+        <AnimatePresence mode="wait" initial={false}>
+          {copied ? (
+            <motion.div
+              key="check"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              <CheckIcon size={24} />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="icon"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="text-foreground"
+            >
+              <InlineSvg
+                body={icon.body}
+                width={icon.width}
+                height={icon.height}
+                size={24}
+                className="fill-current"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+      <div className="w-full min-w-0 text-center">
+        <p className={`truncate font-mono text-[10px] ${
+          copied
+            ? "text-primary-foreground"
+            : "text-muted-foreground group-hover:text-foreground"
+        }`}>
+          {copied ? "copied!" : icon.name}
+        </p>
+        {icon.collection && !copied && (
+          <p className="truncate font-mono text-[9px] text-muted-foreground/60">
+            {icon.prefix}
           </p>
-          {icon.collection && (
-            <p className="truncate font-mono text-[9px] text-muted-foreground/60">
-              {icon.prefix}
-            </p>
-          )}
-        </div>
-      </button>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md gap-6">
-          <DialogHeader>
-            <DialogTitle className="font-mono text-sm">
-              {icon.fullName}
-            </DialogTitle>
-            <DialogDescription className="font-mono text-xs text-muted-foreground">
-              {icon.collection || icon.prefix}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex justify-center border border-border bg-card p-8">
-            <InlineSvg
-              body={icon.body}
-              width={icon.width}
-              height={icon.height}
-              size={64}
-              className="fill-current text-foreground"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant={format === "svg" ? "default" : "outline"}
-              size="sm"
-              onClick={() => loadCode("svg")}
-              className="font-mono text-xs"
-            >
-              [svg]
-            </Button>
-            <Button
-              variant={format === "react" ? "default" : "outline"}
-              size="sm"
-              onClick={() => loadCode("react")}
-              className="font-mono text-xs"
-            >
-              [tsx]
-            </Button>
-            <div className="flex-1" />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCopy}
-              disabled={!code || isPending}
-              className="font-mono text-xs"
-            >
-              {copied ? "copied!" : isPending ? "..." : "[copy]"}
-            </Button>
-          </div>
-
-          {code && (
-            <pre className="max-h-[200px] overflow-auto border border-border bg-card p-3 font-mono text-[11px] leading-relaxed text-foreground/80">
-              {code}
-            </pre>
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
+        )}
+      </div>
+    </motion.button>
   );
 }

@@ -28,12 +28,12 @@ export function CollectionsGrid({
   collections: CollectionWithSamples[];
 }) {
   return (
-    <div className="grid grid-cols-1 gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {collections.map((c) => (
         <Link
           key={c.prefix}
           href={`/?collection=${c.prefix}`}
-          className="group flex items-center gap-4 bg-background p-4 transition-colors hover:bg-accent"
+          className="group flex items-center gap-4 border border-border bg-background p-4 transition-colors hover:bg-accent -mb-px -mr-px"
         >
           <div className="flex items-center gap-1.5 shrink-0">
             {c.sampleIcons.map((icon, i) => (

@@ -63,6 +63,42 @@ Not every collection has every concept. When the user's preferred collection doe
 
 5. **Explain the choice** — Tell the user which collection the icon came from, why it was chosen over alternatives, and note any license differences.
 
+## Installing icons via shadcn
+
+Once you've found the right icon, install it directly into the user's project using shadcn. This creates a standalone React component file — no runtime icon library dependency needed.
+
+1. **Ensure the registry is configured** — The user's \`components.json\` needs:
+   \`\`\`json
+   {
+     "registries": {
+       "@i0": "https://i0.dev/r/{name}.json"
+     }
+   }
+   \`\`\`
+   If not already configured, add it before installing.
+
+2. **Install individual icons**:
+   \`\`\`bash
+   npx shadcn add @i0/lucide:home
+   npx shadcn add @i0/lucide:home @i0/lucide:arrow-right
+   \`\`\`
+   Each icon becomes its own file under \`components/icons/\` (e.g. \`components/icons/lucide-home.tsx\`).
+
+3. **Install an entire collection**:
+   \`\`\`bash
+   npx shadcn add @i0/lucide
+   \`\`\`
+   Creates all icon files under \`components/icons/lucide/\` plus a barrel \`index.tsx\` for convenient imports.
+
+4. **Import the installed icon**:
+   \`\`\`tsx
+   import { LucideHome } from "@/components/icons/lucide-home";
+   // or from a collection install:
+   import { LucideHome } from "@/components/icons/lucide";
+   \`\`\`
+
+**Always prefer \`npx shadcn add\` over manually pasting SVG or React code.** It gives the user a proper component file they own, with no external dependency, and they can re-run the command to update icons later.
+
 ## Tips
 
 - **Consistency matters**: Pick one collection and stick with it. Only cross-collection when absolutely needed.

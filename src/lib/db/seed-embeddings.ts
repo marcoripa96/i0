@@ -102,12 +102,7 @@ async function seedEmbeddings() {
 }
 
 async function ensureVectorIndex() {
-  console.log("Creating vector index...");
-  try {
-    await client.execute("DROP INDEX IF EXISTS icons_embedding_idx");
-  } catch {
-    // Index may not exist
-  }
+  console.log("Ensuring vector index exists...");
   await client.execute(
     "CREATE INDEX IF NOT EXISTS icons_embedding_idx ON icons(libsql_vector_idx(embedding))",
   );

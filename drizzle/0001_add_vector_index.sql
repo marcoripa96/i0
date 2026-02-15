@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS icons_embedding_idx ON icons(libsql_vector_idx(embedding));

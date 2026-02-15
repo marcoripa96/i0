@@ -87,4 +87,20 @@
   body {
     @apply bg-background text-foreground;
   }
+  [data-slot="command-list"] {
+    scrollbar-color: var(--border) var(--popover);
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image:
+      radial-gradient(circle, var(--foreground) 1px, transparent 1px),
+      radial-gradient(circle, var(--foreground) 1px, transparent 1px);
+    background-size: 4px 4px;
+    background-position: 0 0, 2px 2px;
+  }
 }

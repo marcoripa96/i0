@@ -3,13 +3,20 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 
 type Collection = {
   prefix: string;
@@ -19,26 +26,47 @@ type Collection = {
 
 export function SearchInput({
   collections,
+  categories,
+  licenses,
 }: {
   collections: Collection[];
+  categories: string[];
+  licenses: string[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const collection = searchParams.get("collection") ?? "";
+  const category = searchParams.get("category") ?? "";
+  const license = searchParams.get("license") ?? "";
+  const [collectionOpen, setCollectionOpen] = useState(false);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [licenseOpen, setLicenseOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key.length === 1) {
+        inputRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  function updateUrl(q: string, col: string) {
+  function updateUrl(q: string, col: string, cat: string, lic: string) {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (col) params.set("collection", col);
+    if (cat) params.set("category", cat);
+    if (lic) params.set("license", lic);
     const search = params.toString();
     startTransition(() => {
       router.replace(search ? `/?${search}` : "/", { scroll: false });
@@ -49,17 +77,30 @@ export function SearchInput({
     setQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      updateUrl(value, collection);
+      updateUrl(value, collection, category, license);
     }, 300);
   }
 
   function handleCollectionChange(value: string) {
-    const col = value === "all" ? "" : value;
-    updateUrl(query, col);
+    const col = value === collection ? "" : value;
+    setCollectionOpen(false);
+    updateUrl(query, col, category, license);
+  }
+
+  function handleCategoryChange(value: string) {
+    const cat = value === category ? "" : value;
+    setCategoryOpen(false);
+    updateUrl(query, collection, cat, license);
+  }
+
+  function handleLicenseChange(value: string) {
+    const lic = value === license ? "" : value;
+    setLicenseOpen(false);
+    updateUrl(query, collection, category, lic);
   }
 
   return (
-    <div className="flex w-full items-center gap-3">
+    <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end">
       <div className="relative flex-1">
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground select-none">
           {">"}
@@ -67,31 +108,165 @@ export function SearchInput({
         <Input
           ref={inputRef}
           type="text"
-          placeholder="search icons..."
+          spellCheck={false}
+          placeholder="search icons and collections..."
           value={query}
           onChange={(e) => handleQueryChange(e.target.value)}
-          className="h-10 pl-7 font-mono text-sm"
+          className="h-10 pl-7 font-mono text-sm bg-background"
         />
       </div>
-      <Select value={collection || "all"} onValueChange={handleCollectionChange}>
-        <SelectTrigger className="h-10 w-[180px] font-mono text-xs shrink-0">
-          <SelectValue placeholder="all collections" />
-        </SelectTrigger>
-        <SelectContent className="max-h-[300px]">
-          <SelectItem value="all" className="font-mono text-xs">
-            all collections
-          </SelectItem>
-          {collections.map((c) => (
-            <SelectItem
-              key={c.prefix}
-              value={c.prefix}
-              className="font-mono text-xs"
+      <div className="flex items-end gap-3">
+        <div className="flex flex-1 flex-col gap-1 sm:flex-initial">
+          <label className="font-mono text-[10px] text-muted-foreground/60">collection</label>
+          <Popover open={collectionOpen} onOpenChange={setCollectionOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10 w-full justify-between font-mono text-xs sm:w-[180px]"
             >
-              {c.prefix} ({c.total})
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+              <span className="truncate">
+                {collection || "all"}
+              </span>
+              <span className="text-muted-foreground/60">&#x25BE;</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[220px] p-0" align="start">
+            <Command>
+              <CommandInput
+                placeholder="search collections..."
+                className="font-mono text-xs"
+              />
+              <CommandList>
+                <CommandEmpty className="font-mono text-xs">
+                  no collection found
+                </CommandEmpty>
+                <CommandGroup>
+                  <CommandItem
+                    value="all"
+                    onSelect={() => handleCollectionChange("")}
+                    className="font-mono text-xs"
+                  >
+                    all collections
+                  </CommandItem>
+                  {collections.map((c) => (
+                    <CommandItem
+                      key={c.prefix}
+                      value={c.prefix}
+                      onSelect={() => handleCollectionChange(c.prefix)}
+                      className="font-mono text-xs"
+                    >
+                      <span className="flex-1 truncate">{c.prefix}</span>
+                      <span className="text-muted-foreground/60 tabular-nums">
+                        {c.total.toLocaleString()}
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+        </div>
+        <div className="flex flex-1 flex-col gap-1 sm:flex-initial">
+          <label className="font-mono text-[10px] text-muted-foreground/60">category</label>
+          <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10 w-full justify-between font-mono text-xs sm:w-[160px]"
+            >
+              <span className="truncate">
+                {category || "all"}
+              </span>
+              <span className="text-muted-foreground/60">&#x25BE;</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[200px] p-0" align="start">
+            <Command>
+              <CommandInput
+                placeholder="search categories..."
+                className="font-mono text-xs"
+              />
+              <CommandList>
+                <CommandEmpty className="font-mono text-xs">
+                  no category found
+                </CommandEmpty>
+                <CommandGroup>
+                  <CommandItem
+                    value="all"
+                    onSelect={() => handleCategoryChange("")}
+                    className="font-mono text-xs"
+                  >
+                    all categories
+                  </CommandItem>
+                  {categories.map((cat) => (
+                    <CommandItem
+                      key={cat}
+                      value={cat}
+                      onSelect={() => handleCategoryChange(cat)}
+                      className="font-mono text-xs"
+                    >
+                      {cat}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+        </div>
+        <div className="flex flex-1 flex-col gap-1 sm:flex-initial">
+          <label className="font-mono text-[10px] text-muted-foreground/60">license</label>
+          <Popover open={licenseOpen} onOpenChange={setLicenseOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10 w-full justify-between font-mono text-xs sm:w-[140px]"
+            >
+              <span className="truncate">
+                {license || "all"}
+              </span>
+              <span className="text-muted-foreground/60">&#x25BE;</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[200px] p-0" align="start">
+            <Command>
+              <CommandInput
+                placeholder="search licenses..."
+                className="font-mono text-xs"
+              />
+              <CommandList>
+                <CommandEmpty className="font-mono text-xs">
+                  no license found
+                </CommandEmpty>
+                <CommandGroup>
+                  <CommandItem
+                    value="all"
+                    onSelect={() => handleLicenseChange("")}
+                    className="font-mono text-xs"
+                  >
+                    all licenses
+                  </CommandItem>
+                  {licenses.map((lic) => (
+                    <CommandItem
+                      key={lic}
+                      value={lic}
+                      onSelect={() => handleLicenseChange(lic)}
+                      className="font-mono text-xs"
+                    >
+                      {lic}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+        </div>
+      </div>
     </div>
   );
 }

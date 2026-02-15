@@ -50,14 +50,9 @@ export function svgToReactComponent(svg: string, fullName: string): string {
   const cleaned = cleanSvg(svg);
   const jsx = htmlToJsx(cleaned).replace(/<svg\s/, "<svg {...props} ");
 
-  return `import type { SVGProps } from "react";
-
-export function ${componentName}(props: SVGProps<SVGSVGElement>) {
+  return `export function ${componentName}(props: SVGProps<SVGSVGElement>) {
   return (
     ${jsx}
   );
-}
-
-export default ${componentName};
-`;
+}`;
 }

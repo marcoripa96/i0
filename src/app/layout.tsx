@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { GeistPixelSquare } from "geist/font/pixel";
+import { ThemeProvider } from "./components/theme-provider";
+import { CopyFormatProvider } from "./components/copy-format-provider";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -19,24 +24,44 @@ export const metadata: Metadata = {
     "200k+ icons from 150+ open-source collections, searchable via MCP",
 };
 
+async function Providers({ children }: { children: React.ReactNode }) {
+  const cookieStore = await cookies();
+  const theme =
+    cookieStore.get("theme")?.value === "light" ? "light" : "dark";
+  const copyFormatRaw = cookieStore.get("copyFormat")?.value;
+  const copyFormat =
+    copyFormatRaw === "react" ? "react" : copyFormatRaw === "shadcn" ? "shadcn" : "svg";
+
+  return (
+    <ThemeProvider initialTheme={theme}>
+      <CopyFormatProvider initialFormat={copyFormat}>
+        {children}
+      </CopyFormatProvider>
+    </ThemeProvider>
+  );
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='light')return;document.documentElement.classList.add('dark')}catch(e){}})()`,
+            __html: `(function(){try{if(/theme=light/.test(document.cookie))document.documentElement.classList.remove('dark')}catch(e){}})()`,
           }}
         />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${GeistPixelSquare.variable} antialiased`}
       >
-        {children}
+        <Suspense>
+          <Providers>{children}</Providers>
+        </Suspense>
+        <Toaster position="bottom-right" duration={2000} />
       </body>
     </html>
   );
