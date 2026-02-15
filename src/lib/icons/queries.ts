@@ -295,6 +295,42 @@ export async function browseByCategory(
   };
 }
 
+export async function browseAllIcons(
+  limit = 60,
+  offset = 0,
+  license?: string,
+): Promise<{ results: WebSearchResult[]; hasMore: boolean }> {
+  "use cache";
+  cacheLife("hours");
+
+  const licenseFilter = license
+    ? sql` WHERE json_extract(c.license, '$.title') = ${license}`
+    : sql``;
+
+  const rows = await db.all<WebSearchResult>(sql`
+    SELECT
+      i.full_name AS fullName,
+      i.name,
+      i.prefix,
+      c.name AS collection,
+      i.body,
+      COALESCE(i.width, 24) AS width,
+      COALESCE(i.height, 24) AS height,
+      i.category,
+      i.tags
+    FROM icons i
+    JOIN collections c ON c.prefix = i.prefix
+    ${licenseFilter}
+    ORDER BY i.prefix, i.name
+    LIMIT ${limit + 1} OFFSET ${offset}
+  `);
+
+  return {
+    results: rows.slice(0, limit),
+    hasMore: rows.length > limit,
+  };
+}
+
 export async function searchCollections(
   query: string
 ): Promise<CollectionWithSamples[]> {

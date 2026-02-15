@@ -41,6 +41,7 @@ export function SearchInput({
   const collection = searchParams.get("collection") ?? "";
   const category = searchParams.get("category") ?? "";
   const license = searchParams.get("license") ?? "";
+  const scope = searchParams.get("scope") === "icons" ? "icons" : "all";
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [licenseOpen, setLicenseOpen] = useState(false);
@@ -62,16 +63,21 @@ export function SearchInput({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  function updateUrl(q: string, col: string, cat: string, lic: string) {
+  function updateUrl(q: string, col: string, cat: string, lic: string, sc: string = scope) {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (col) params.set("collection", col);
     if (cat) params.set("category", cat);
     if (lic) params.set("license", lic);
+    if (sc === "icons") params.set("scope", "icons");
     const search = params.toString();
     startTransition(() => {
       router.replace(search ? `/?${search}` : "/", { scroll: false });
     });
+  }
+
+  function handleScopeChange(value: "all" | "icons") {
+    updateUrl(query, collection, category, license, value);
   }
 
   function handleQueryChange(value: string) {
@@ -117,6 +123,31 @@ export function SearchInput({
         />
       </div>
       <div className="flex items-end gap-3">
+        <div className="flex flex-col gap-1">
+          <label className="font-mono text-[10px] text-muted-foreground/60">scope</label>
+          <div className="flex h-10 items-center rounded-md border border-input bg-background p-1">
+            <button
+              onClick={() => handleScopeChange("all")}
+              className={`h-full px-2.5 rounded-sm font-mono text-[11px] transition-colors cursor-pointer ${
+                scope === "all"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              all
+            </button>
+            <button
+              onClick={() => handleScopeChange("icons")}
+              className={`h-full px-2.5 rounded-sm font-mono text-[11px] transition-colors cursor-pointer ${
+                scope === "icons"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              icons
+            </button>
+          </div>
+        </div>
         <div className="flex flex-1 flex-col gap-1 sm:flex-initial">
           <label className="font-mono text-[10px] text-muted-foreground/60">collection</label>
           <Popover open={collectionOpen} onOpenChange={setCollectionOpen}>

@@ -9,6 +9,7 @@ import {
   searchCollections,
   browseIcons,
   browseByCategory,
+  browseAllIcons,
 } from "@/lib/icons/queries";
 import { ThemeToggle } from "./components/theme-toggle";
 import { SearchInput } from "./components/search-input";
@@ -28,7 +29,7 @@ import { TransitionOverlay } from "./components/transition-overlay";
 async function SearchHeader({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; collection?: string; category?: string; license?: string }>;
+  searchParams: Promise<{ q?: string; collection?: string; category?: string; license?: string; scope?: string }>;
 }) {
   const params = await searchParams;
   const collection = params.collection ?? "";
@@ -40,10 +41,6 @@ async function SearchHeader({
     category ? getCollectionPrefixesForCategory(category) : null,
     getLicenses(),
   ]);
-
-  // TODO: remove — artificial delay for testing Suspense fallback
-  await new Promise((r) => setTimeout(r, 3000));
-
   const prefixSet = categoryPrefixes ? new Set(categoryPrefixes) : null;
 
   const collectionsForFilter = allCollections
@@ -66,15 +63,18 @@ async function SearchResults({
   collection,
   category,
   license,
+  scope,
 }: {
   q: string;
   collection?: string;
   category?: string;
   license?: string;
+  scope?: string;
 }) {
+  const includeCollections = scope !== "icons" && !collection;
   const [data, matchingCollections] = await Promise.all([
     searchIconsWeb(q, collection, category, 60, 0, license),
-    !collection ? searchCollections(q) : Promise.resolve([]),
+    includeCollections ? searchCollections(q) : Promise.resolve([]),
   ]);
 
   const results = data.results.map((r) => ({
@@ -222,6 +222,30 @@ async function CollectionsView({ license }: { license?: string }) {
   );
 }
 
+async function BrowseAllIconsView({ license }: { license?: string }) {
+  const data = await browseAllIcons(60, 0, license);
+  const results = data.results.map((r) => ({
+    fullName: r.fullName,
+    name: r.name,
+    prefix: r.prefix,
+    collection: r.collection,
+    body: r.body,
+    width: r.width,
+    height: r.height,
+  }));
+
+  return (
+    <div className="flex flex-col gap-4">
+      <IconGrid
+        key={`browse-all-${license ?? ""}`}
+        initialResults={results}
+        initialHasMore={data.hasMore}
+        license={license}
+      />
+    </div>
+  );
+}
+
 async function Content({
   searchParams,
 }: {
@@ -230,6 +254,7 @@ async function Content({
     collection?: string;
     category?: string;
     license?: string;
+    scope?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -237,6 +262,7 @@ async function Content({
   const collection = params.collection ?? "";
   const category = params.category ?? "";
   const license = params.license ?? "";
+  const scope = params.scope ?? "";
 
   if (q) {
     return (
@@ -245,6 +271,7 @@ async function Content({
         collection={collection || undefined}
         category={category || undefined}
         license={license || undefined}
+        scope={scope || undefined}
       />
     );
   }
@@ -260,6 +287,9 @@ async function Content({
   if (category) {
     return <BrowseCategoryView category={category} license={license || undefined} />;
   }
+  if (scope === "icons") {
+    return <BrowseAllIconsView license={license || undefined} />;
+  }
   return <CollectionsView license={license || undefined} />;
 }
 
@@ -271,6 +301,7 @@ export default function Home({
     collection?: string;
     category?: string;
     license?: string;
+    scope?: string;
   }>;
 }) {
   return (
@@ -282,16 +313,18 @@ export default function Home({
               icons0</pre><span className="text-sm font-normal leading-none tracking-tighter text-muted-foreground/40 transition-colors group-hover:text-muted-foreground">.dev</span>
           </a>
           <div className="flex items-center gap-2">
-            <McpDialog />
-            <a
-              href="https://github.com/marcoripa96/i0"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              [github]
-            </a>
             <ThemeToggle />
+            <span className="hidden sm:flex items-center gap-2">
+              <McpDialog />
+              <a
+                href="https://github.com/marcoripa96/i0"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                [github]
+              </a>
+            </span>
             <UserMenu />
           </div>
         </div>
@@ -340,7 +373,7 @@ export default function Home({
 
       <footer className="mt-12 border-t border-border pt-6 pb-8 flex flex-col items-center gap-4">
         <p className="font-mono text-[10px] text-muted-foreground/40 text-center">
-          powered by <a href="https://iconify.design" target="_blank" rel="noopener noreferrer" className="text-muted-foreground/60 transition-colors hover:text-muted-foreground">iconify</a> · <a href="https://github.com/marcoripa96/i0" target="_blank" rel="noopener noreferrer" className="text-muted-foreground/60 transition-colors hover:text-muted-foreground">github</a>
+          powered by <a href="https://iconify.design" target="_blank" rel="noopener noreferrer" className="text-muted-foreground/60 transition-colors hover:text-muted-foreground">iconify</a> · <a href="https://github.com/marcoripa96/i0" target="_blank" rel="noopener noreferrer" className="text-muted-foreground/60 transition-colors hover:text-muted-foreground">github</a> · MIT license
         </p>
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-[10px] text-muted-foreground/40">made by</span>
