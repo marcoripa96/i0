@@ -21,28 +21,43 @@ type Harness = {
   id: string;
   name: string;
   configPath: string;
-  getConfig: (url: string) => string;
+  getConfig: (url: string, token: string) => string;
 };
+
+const TOKEN_PLACEHOLDER = "<your-api-key>";
 
 const harnesses: Harness[] = [
   {
     id: "claude-code",
     name: "Claude Code",
     configPath: "Terminal",
-    getConfig: (url) => `claude mcp add icons0 --transport http ${url}`,
+    getConfig: (url, token) =>
+      `claude mcp add icons0 \\\n  --transport http \\\n  --header "Authorization: Bearer ${token}" \\\n  ${url}`,
   },
   {
     id: "codex",
     name: "Codex",
     configPath: "~/.codex/config.toml",
-    getConfig: (url) => `[mcp_servers.icons0]\nurl = "${url}"`,
+    getConfig: (url, token) =>
+      `[mcp_servers.icons0]\nurl = "${url}"\nhttp_headers = { Authorization = "Bearer ${token}" }`,
   },
   {
     id: "cursor",
     name: "Cursor",
     configPath: ".cursor/mcp.json",
-    getConfig: (url) =>
-      JSON.stringify({ mcpServers: { icons0: { url } } }, null, 2),
+    getConfig: (url, token) =>
+      JSON.stringify(
+        {
+          mcpServers: {
+            icons0: {
+              url,
+              headers: { Authorization: `Bearer ${token}` },
+            },
+          },
+        },
+        null,
+        2
+      ),
   },
 ];
 
@@ -83,7 +98,7 @@ function CheckIcon({ size = 14 }: { size?: number }) {
   );
 }
 
-export function McpDialog() {
+export function McpDialog({ token }: { token?: string }) {
   const [selected, setSelected] = useState("claude-code");
   const [copied, setCopied] = useState(false);
 
@@ -92,7 +107,7 @@ export function McpDialog() {
     typeof window !== "undefined"
       ? `${window.location.origin}/mcp`
       : "https://your-domain.com/mcp";
-  const config = harness.getConfig(mcpUrl);
+  const config = harness.getConfig(mcpUrl, token || TOKEN_PLACEHOLDER);
 
   async function handleCopy() {
     await navigator.clipboard.writeText(config);

@@ -20,6 +20,10 @@ import { InstallCommand } from "./components/install-command";
 import { Signature } from "./components/signature";
 import { McpDialog } from "./components/mcp-dialog";
 import { UserMenu } from "./components/user-menu";
+import {
+  SearchTransitionProvider,
+} from "./components/search-transition";
+import { TransitionOverlay } from "./components/transition-overlay";
 
 async function SearchHeader({
   searchParams,
@@ -36,6 +40,9 @@ async function SearchHeader({
     category ? getCollectionPrefixesForCategory(category) : null,
     getLicenses(),
   ]);
+
+  // TODO: remove — artificial delay for testing Suspense fallback
+  await new Promise((r) => setTimeout(r, 3000));
 
   const prefixSet = categoryPrefixes ? new Set(categoryPrefixes) : null;
 
@@ -303,23 +310,33 @@ export default function Home({
 
       </header>
 
-      <Suspense>
-        <SearchHeader searchParams={searchParams} />
-      </Suspense>
-
-      <main className="mt-10 flex-1">
+      <SearchTransitionProvider>
         <Suspense
           fallback={
-            <div className="flex items-center justify-center py-20">
-              <p className="font-mono text-xs text-muted-foreground animate-pulse">
-                loading...
-              </p>
-            </div>
+            <StickySearch>
+              <SearchInput collections={[]} categories={[]} licenses={[]} />
+            </StickySearch>
           }
         >
-          <Content searchParams={searchParams} />
+          <SearchHeader searchParams={searchParams} />
         </Suspense>
-      </main>
+
+        <main className="mt-10 flex-1">
+          <TransitionOverlay>
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-20">
+                  <p className="font-mono text-xs text-muted-foreground animate-pulse">
+                    loading...
+                  </p>
+                </div>
+              }
+            >
+              <Content searchParams={searchParams} />
+            </Suspense>
+          </TransitionOverlay>
+        </main>
+      </SearchTransitionProvider>
 
       <footer className="mt-12 border-t border-border pt-6 pb-8 flex flex-col items-center gap-4">
         <p className="font-mono text-[10px] text-muted-foreground/40 text-center">

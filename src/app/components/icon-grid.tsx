@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { IconCard } from "./icon-card";
 import { useCopyFormat } from "./copy-format-provider";
+import { useSearchTransition } from "./search-transition";
 
 type IconData = {
   fullName: string;
@@ -69,6 +70,7 @@ export function IconGrid({
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+  const { startTransition: startSearchTransition } = useSearchTransition();
 
   async function loadMore() {
     const offset = results.length;
@@ -97,7 +99,7 @@ export function IconGrid({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => router.push("/")}
+            onClick={() => startSearchTransition(() => router.push("/"))}
             className="font-mono text-xs"
           >
             [clear search]

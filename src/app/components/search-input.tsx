@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchTransition } from "./search-transition";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,7 +36,7 @@ export function SearchInput({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [, startTransition] = useTransition();
+  const { startTransition } = useSearchTransition();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const collection = searchParams.get("collection") ?? "";
   const category = searchParams.get("category") ?? "";
