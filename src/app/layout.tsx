@@ -10,9 +10,25 @@ import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_BASE_URL ?? "https://icons0.dev"
+  ),
   title: "icons0 — The fastest icon search for you and your AI agent",
   description:
     "Search 200k+ icons from 150+ open-source collections. Browse the web UI or connect the MCP server to your AI coding agent.",
+  openGraph: {
+    title: "icons0 — The fastest icon search for you and your AI agent",
+    description:
+      "Search 200k+ icons from 150+ open-source collections. Browse the web UI or connect the MCP server to your AI coding agent.",
+    type: "website",
+    siteName: "icons0",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "icons0 — The fastest icon search for you and your AI agent",
+    description:
+      "Search 200k+ icons from 150+ open-source collections. Browse the web UI or connect the MCP server to your AI coding agent.",
+  },
 };
 
 async function Providers({ children }: { children: React.ReactNode }) {
