@@ -18,6 +18,7 @@ import { CollectionsGrid } from "./components/collections-grid";
 import { LicenseBadge } from "./components/license-badge";
 import { InstallCommand } from "./components/install-command";
 import { Signature } from "./components/signature";
+import { McpDialog } from "./components/mcp-dialog";
 
 async function SearchHeader({
   searchParams,
@@ -277,12 +278,7 @@ export default function Home({
             </span>
           </a>
           <div className="flex items-center gap-2">
-            <a
-              href="/mcp"
-              className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              [mcp]
-            </a>
+            <McpDialog />
             <a
               href="https://github.com/marcoripa96/i0"
               target="_blank"

@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "i0 -- Icon Search",
+  title: "i0 - The Icon Search",
   description:
     "200k+ icons from 150+ open-source collections, searchable via MCP",
 };

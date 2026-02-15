@@ -11,6 +11,7 @@
     "seed:embeddings": "bun run src/lib/db/seed-embeddings.ts"
   },
   "dependencies": {
+    "@ai-sdk/gateway": "^3.0.46",
     "@ai-sdk/google": "^3.0.29",
     "@iconify/utils": "3.1.0",
     "@libsql/client": "^0.17.0",

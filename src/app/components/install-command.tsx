@@ -57,7 +57,7 @@ export function InstallCommand() {
   return (
     <button
       onClick={handleCopy}
-      className="group flex w-full items-center gap-2 border border-border bg-card px-3 py-2 font-mono text-[11px] text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground sm:w-auto"
+      className="group flex w-full items-center gap-3 border border-border bg-card px-4 py-3 font-mono text-sm text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground sm:w-auto"
     >
       <span className="text-muted-foreground/50 select-none">$</span>
       <span className="whitespace-nowrap">{command}</span>

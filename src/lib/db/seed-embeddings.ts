@@ -1,20 +1,18 @@
 import { createClient } from "@libsql/client";
 import type { InStatement } from "@libsql/client";
 import { embedMany } from "ai";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGateway } from "@ai-sdk/gateway";
 
 const client = createClient({
   url: process.env.TURSO_DATABASE_URL!,
   authToken: process.env.TURSO_AUTH_TOKEN!,
 });
 
-const google = createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_API_KEY });
-const embeddingModel = google.embedding("gemini-embedding-001");
+const gateway = createGateway({ apiKey: process.env.VERCEL_AI_GATEWAY });
+const embeddingModel = gateway.embeddingModel("google/gemini-embedding-001");
 
-// Free tier: 100 embed requests/min. Each text in a batch counts as 1 request.
-// Batch of 80 texts = 80 requests, leaving headroom. Wait 60s between batches.
-const EMBED_BATCH = parseInt(process.env.EMBED_BATCH || "80");
-const BATCH_DELAY_MS = parseInt(process.env.EMBED_DELAY || "60000");
+const EMBED_BATCH = parseInt(process.env.EMBED_BATCH || "250");
+const BATCH_DELAY_MS = parseInt(process.env.EMBED_DELAY || "200");
 
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5): Promise<T> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
