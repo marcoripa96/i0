@@ -335,7 +335,7 @@ export default function Home({
               the fastest icon search — for you and your AI agent
             </p>
             <p className="font-mono text-xs text-muted-foreground">
-              200k+ icons · 150+ collections · web UI + MCP server
+              200k+ icons · 150+ collections · MCP server
             </p>
           </div>
           <InstallCommand />
