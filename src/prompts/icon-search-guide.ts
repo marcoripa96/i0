@@ -65,32 +65,22 @@ Not every collection has every concept. When the user's preferred collection doe
 
 ## Installing icons via shadcn
 
-Once you've found the right icon, install it directly into the user's project using shadcn. This creates a standalone React component file — no runtime icon library dependency needed.
+Once you've found the right icon, install it directly into the user's project using shadcn. This creates a standalone React component file — no runtime icon library dependency needed. No registry configuration required — just use the direct URL.
 
-1. **Ensure the registry is configured** — The user's \`components.json\` needs:
-   \`\`\`json
-   {
-     "registries": {
-       "@icons0": "https://icons0.dev/r/{name}.json"
-     }
-   }
-   \`\`\`
-   If not already configured, add it before installing.
-
-2. **Install individual icons**:
+1. **Install individual icons**:
    \`\`\`bash
-   npx shadcn add @icons0/lucide:home
-   npx shadcn add @icons0/lucide:home @icons0/lucide:arrow-right
+   npx shadcn@latest add https://i0-phi.vercel.app/r/lucide:home.json
+   npx shadcn@latest add https://i0-phi.vercel.app/r/lucide:home.json https://i0-phi.vercel.app/r/lucide:arrow-right.json
    \`\`\`
    Each icon becomes its own file under \`components/icons/\` (e.g. \`components/icons/lucide-home.tsx\`).
 
-3. **Install an entire collection**:
+2. **Install an entire collection**:
    \`\`\`bash
-   npx shadcn add @icons0/lucide
+   npx shadcn@latest add https://i0-phi.vercel.app/r/lucide.json
    \`\`\`
    Creates all icon files under \`components/icons/lucide/\` plus a barrel \`index.tsx\` for convenient imports.
 
-4. **Import the installed icon**:
+3. **Import the installed icon**:
    \`\`\`tsx
    import { LucideHome } from "@/components/icons/lucide-home";
    // or from a collection install:

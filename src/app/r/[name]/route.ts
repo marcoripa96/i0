@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getIconByFullName, browseIcons } from "@/lib/icons/queries";
+import {
+  getIconByFullName,
+  browseIcons,
+  getCollections,
+} from "@/lib/icons/queries";
 import { renderIconSvg } from "@/lib/icons/svg";
 import { svgToReactComponent } from "@/lib/icons/react";
 
@@ -32,7 +36,8 @@ async function handleSingleIcon(fullName: string) {
     files: [
       {
         path: `icons/${fileName}.tsx`,
-        type: "registry:component",
+        type: "registry:file",
+        target: `icons/${fileName}.tsx`,
         content,
       },
     ],
@@ -54,7 +59,7 @@ async function handleCollection(prefix: string) {
     );
   }
 
-  const files: { path: string; type: string; content: string }[] = [];
+  const files: { path: string; type: string; content: string; target: string }[] = [];
   const exports: { componentName: string; fileName: string }[] = [];
 
   for (const icon of results) {
@@ -63,7 +68,8 @@ async function handleCollection(prefix: string) {
 
     files.push({
       path: `icons/${prefix}/${icon.name}.tsx`,
-      type: "registry:component",
+      type: "registry:file",
+      target: `icons/${prefix}/${icon.name}.tsx`,
       content,
     });
 
@@ -76,7 +82,8 @@ async function handleCollection(prefix: string) {
 
   files.push({
     path: `icons/${prefix}/index.tsx`,
-    type: "registry:component",
+    type: "registry:file",
+    target: `icons/${prefix}/index.tsx`,
     content: barrelContent + "\n",
   });
 
@@ -87,12 +94,34 @@ async function handleCollection(prefix: string) {
   });
 }
 
+async function handleRegistry() {
+  const allCollections = await getCollections();
+
+  const items = allCollections.map((c) => ({
+    name: c.prefix,
+    type: "registry:ui",
+    title: c.name,
+    description: `${c.total} icons from ${c.name}${c.license ? ` (${c.license.title})` : ""}`,
+  }));
+
+  return NextResponse.json({
+    $schema: "https://ui.shadcn.com/schema/registry.json",
+    name: "icons0",
+    homepage: "https://i0-phi.vercel.app",
+    items,
+  });
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name: rawName } = await params;
   const name = rawName.replace(/\.json$/, "");
+
+  if (name === "registry") {
+    return handleRegistry();
+  }
 
   if (name.includes(":")) {
     return handleSingleIcon(name);

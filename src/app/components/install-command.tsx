@@ -45,8 +45,8 @@ export function InstallCommand() {
   const searchParams = useSearchParams();
   const collection = searchParams.get("collection") ?? "";
   const command = collection
-    ? `npx shadcn add @icons0/${collection}`
-    : "npx shadcn add @icons0/<name>";
+    ? `npx shadcn@latest add https://i0-phi.vercel.app/r/${collection}.json`
+    : "npx shadcn@latest add https://i0-phi.vercel.app/r/<name>.json";
 
   async function handleCopy() {
     await navigator.clipboard.writeText(command);
