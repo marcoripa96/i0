@@ -113,7 +113,7 @@ export function McpDialog() {
             Add MCP server
           </DialogTitle>
           <DialogDescription className="font-mono text-xs">
-            Connect i0 to your agent to search 200k+ icons.
+            Give your agent instant access to 200k+ icons.
           </DialogDescription>
         </DialogHeader>
 

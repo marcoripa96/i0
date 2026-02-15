@@ -19,6 +19,7 @@ import { LicenseBadge } from "./components/license-badge";
 import { InstallCommand } from "./components/install-command";
 import { Signature } from "./components/signature";
 import { McpDialog } from "./components/mcp-dialog";
+import { UserMenu } from "./components/user-menu";
 
 async function SearchHeader({
   searchParams,
@@ -274,7 +275,7 @@ export default function Home({
               i0
             </pre>
             <span className="font-mono text-[10px] text-muted-foreground/50 transition-colors group-hover:text-muted-foreground">
-              icon search
+              icons
             </span>
           </a>
           <div className="flex items-center gap-2">
@@ -288,16 +289,17 @@ export default function Home({
               [github]
             </a>
             <ThemeToggle />
+            <UserMenu />
           </div>
         </div>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
           <div className="flex flex-col gap-1">
             <p className="font-mono text-sm text-foreground">
-              find the perfect icon, instantly
+              the fastest icon search — for you and your AI agent
             </p>
             <p className="font-mono text-xs text-muted-foreground">
-              200k+ icons from 150+ open-source collections
+              200k+ icons · 150+ collections · web UI + MCP server
             </p>
           </div>
           <InstallCommand />

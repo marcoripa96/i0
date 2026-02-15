@@ -15,6 +15,13 @@
       "when": 1771171414000,
       "tag": "0001_add_vector_index",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1771174176060,
+      "tag": "0002_add-better-auth-tables",
+      "breakpoints": true
     }
   ]
 }
