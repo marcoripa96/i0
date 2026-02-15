@@ -1,4 +1,4 @@
-# i0 — Icon Search MCP Server
+# icons0 — Icon Search MCP Server
 
 Next.js app with xmcp MCP server. Serves 200k+ icons from 150+ open-source collections. Built with xmcp (Next.js adapter), Turso (libSQL), Drizzle ORM, FTS5 full-text search, and Gemini semantic embeddings.
 

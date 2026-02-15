@@ -29,20 +29,20 @@ const harnesses: Harness[] = [
     id: "claude-code",
     name: "Claude Code",
     configPath: "Terminal",
-    getConfig: (url) => `claude mcp add i0 --transport http ${url}`,
+    getConfig: (url) => `claude mcp add icons0 --transport http ${url}`,
   },
   {
     id: "codex",
     name: "Codex",
     configPath: "~/.codex/config.toml",
-    getConfig: (url) => `[mcp_servers.i0]\nurl = "${url}"`,
+    getConfig: (url) => `[mcp_servers.icons0]\nurl = "${url}"`,
   },
   {
     id: "cursor",
     name: "Cursor",
     configPath: ".cursor/mcp.json",
     getConfig: (url) =>
-      JSON.stringify({ mcpServers: { i0: { url } } }, null, 2),
+      JSON.stringify({ mcpServers: { icons0: { url } } }, null, 2),
   },
 ];
 

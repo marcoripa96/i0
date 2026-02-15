@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "i0 — The fastest icon search for you and your AI agent",
+  title: "icons0 — The fastest icon search for you and your AI agent",
   description:
     "Search 200k+ icons from 150+ open-source collections. Browse the web UI or connect the MCP server to your AI coding agent.",
 };

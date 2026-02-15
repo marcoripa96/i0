@@ -71,7 +71,7 @@ Once you've found the right icon, install it directly into the user's project us
    \`\`\`json
    {
      "registries": {
-       "@i0": "https://i0.dev/r/{name}.json"
+       "@icons0": "https://icons0.dev/r/{name}.json"
      }
    }
    \`\`\`
@@ -79,14 +79,14 @@ Once you've found the right icon, install it directly into the user's project us
 
 2. **Install individual icons**:
    \`\`\`bash
-   npx shadcn add @i0/lucide:home
-   npx shadcn add @i0/lucide:home @i0/lucide:arrow-right
+   npx shadcn add @icons0/lucide:home
+   npx shadcn add @icons0/lucide:home @icons0/lucide:arrow-right
    \`\`\`
    Each icon becomes its own file under \`components/icons/\` (e.g. \`components/icons/lucide-home.tsx\`).
 
 3. **Install an entire collection**:
    \`\`\`bash
-   npx shadcn add @i0/lucide
+   npx shadcn add @icons0/lucide
    \`\`\`
    Creates all icon files under \`components/icons/lucide/\` plus a barrel \`index.tsx\` for convenient imports.
 

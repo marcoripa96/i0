@@ -28,7 +28,7 @@ export async function getIconCode(
   format: "svg" | "react" | "shadcn"
 ): Promise<string | null> {
   if (format === "shadcn") {
-    return `npx shadcn add @i0/${fullName}`;
+    return `npx shadcn add @icons0/${fullName}`;
   }
 
   const icon = await getIconByFullName(fullName);

@@ -45,8 +45,8 @@ export function InstallCommand() {
   const searchParams = useSearchParams();
   const collection = searchParams.get("collection") ?? "";
   const command = collection
-    ? `npx shadcn add @i0/${collection}`
-    : "npx shadcn add @i0/<name>";
+    ? `npx shadcn add @icons0/${collection}`
+    : "npx shadcn add @icons0/<name>";
 
   async function handleCopy() {
     await navigator.clipboard.writeText(command);

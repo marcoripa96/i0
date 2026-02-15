@@ -270,13 +270,9 @@ export default function Home({
     <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-8 sm:px-6 lg:px-8">
       <header className="mb-10 flex flex-col gap-6">
         <div className="flex items-center justify-between">
-          <a href="/" className="group flex items-baseline gap-1">
+          <a href="/" className="group flex items-baseline">
             <pre className="text-lg font-bold leading-none tracking-tighter text-foreground">
-              i0
-            </pre>
-            <span className="font-mono text-[10px] text-muted-foreground/50 transition-colors group-hover:text-muted-foreground">
-              icons
-            </span>
+              icons0</pre><span className="text-sm font-normal leading-none tracking-tighter text-muted-foreground/40 transition-colors group-hover:text-muted-foreground">.dev</span>
           </a>
           <div className="flex items-center gap-2">
             <McpDialog />
