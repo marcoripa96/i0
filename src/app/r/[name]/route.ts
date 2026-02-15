@@ -37,7 +37,7 @@ async function handleSingleIcon(fullName: string) {
       {
         path: `icons/${fileName}.tsx`,
         type: "registry:file",
-        target: `icons/${fileName}.tsx`,
+        target: `components/icons/${fileName}.tsx`,
         content,
       },
     ],
@@ -69,7 +69,7 @@ async function handleCollection(prefix: string) {
     files.push({
       path: `icons/${prefix}/${icon.name}.tsx`,
       type: "registry:file",
-      target: `icons/${prefix}/${icon.name}.tsx`,
+      target: `components/icons/${prefix}/${icon.name}.tsx`,
       content,
     });
 
@@ -83,7 +83,7 @@ async function handleCollection(prefix: string) {
   files.push({
     path: `icons/${prefix}/index.tsx`,
     type: "registry:file",
-    target: `icons/${prefix}/index.tsx`,
+    target: `components/icons/${prefix}/index.tsx`,
     content: barrelContent + "\n",
   });
 
