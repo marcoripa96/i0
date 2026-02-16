@@ -28,16 +28,17 @@ async function handleSingleIcon(fullName: string) {
   }
 
   const content = makeIconContent(fullName, icon);
-  const fileName = fullName.replace(":", "-");
+  const slashName = fullName.replace(":", "/");
 
   return NextResponse.json({
-    name: fullName,
+    $schema: "https://ui.shadcn.com/schema/registry-item.json",
+    name: slashName,
     type: "registry:ui",
     files: [
       {
-        path: `icons/${fileName}.tsx`,
+        path: `icons/${slashName}.tsx`,
         type: "registry:file",
-        target: `components/icons/${fileName}.tsx`,
+        target: `components/icons/${slashName}.tsx`,
         content,
       },
     ],
@@ -88,6 +89,7 @@ async function handleCollection(prefix: string) {
   });
 
   return NextResponse.json({
+    $schema: "https://ui.shadcn.com/schema/registry-item.json",
     name: prefix,
     type: "registry:ui",
     files,
@@ -107,25 +109,41 @@ async function handleRegistry() {
   return NextResponse.json({
     $schema: "https://ui.shadcn.com/schema/registry.json",
     name: "icons0",
-    homepage: "https://i0-phi.vercel.app",
+    homepage: "https://icons0.dev",
     items,
   });
 }
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ name: string }> }
+  { params }: { params: Promise<{ name: string[] }> }
 ) {
-  const { name: rawName } = await params;
-  const name = rawName.replace(/\.json$/, "");
+  const { name: segments } = await params;
 
-  if (name === "registry") {
-    return handleRegistry();
+  // Strip .json from the last segment
+  const last = segments[segments.length - 1].replace(/\.json$/, "");
+  const parts = [...segments.slice(0, -1), last];
+
+  if (parts.length === 1) {
+    const name = parts[0];
+
+    if (name === "registry") {
+      return handleRegistry();
+    }
+
+    // Backward compat: "lucide:arrow-right"
+    if (name.includes(":")) {
+      return handleSingleIcon(name);
+    }
+
+    return handleCollection(name);
   }
 
-  if (name.includes(":")) {
-    return handleSingleIcon(name);
+  if (parts.length === 2) {
+    // New format: ["lucide", "arrow-right"] → "lucide:arrow-right"
+    const fullName = `${parts[0]}:${parts[1]}`;
+    return handleSingleIcon(fullName);
   }
 
-  return handleCollection(name);
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
 }

@@ -45,8 +45,8 @@ export function InstallCommand() {
   const searchParams = useSearchParams();
   const collection = searchParams.get("collection") ?? "";
   const command = collection
-    ? `npx shadcn@latest add https://i0-phi.vercel.app/r/${collection}.json`
-    : "npx shadcn@latest add https://i0-phi.vercel.app/r/<name>.json";
+    ? `npx shadcn@latest add @icons0/${collection}`
+    : "npx shadcn@latest add @icons0/<collection>/<name>";
 
   async function handleCopy() {
     await navigator.clipboard.writeText(command);
@@ -57,7 +57,11 @@ export function InstallCommand() {
   return (
     <button
       onClick={handleCopy}
+<<<<<<< HEAD
       className="group flex w-full max-w-full items-center gap-3 overflow-hidden border border-border bg-card px-4 py-3 font-mono text-sm text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground sm:w-auto"
+=======
+      className="group flex w-full items-center gap-3 border border-border bg-card px-4 py-3 font-mono text-xs text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground sm:w-auto"
+>>>>>>> 17217f5 (fix: shadcn registry)
     >
       <span className="text-muted-foreground/50 select-none">$</span>
       <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{command}</span>

@@ -28,7 +28,8 @@ export async function getIconCode(
   format: "svg" | "react" | "shadcn"
 ): Promise<string | null> {
   if (format === "shadcn") {
-    return `npx shadcn@latest add https://i0-phi.vercel.app/r/${fullName}.json`;
+    const slashName = fullName.replace(":", "/");
+    return `npx shadcn@latest add @icons0/${slashName}`;
   }
 
   const icon = await getIconByFullName(fullName);
