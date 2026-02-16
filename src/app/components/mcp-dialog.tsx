@@ -32,7 +32,7 @@ const harnesses: Harness[] = [
     name: "Claude Code",
     configPath: "Terminal",
     getConfig: (url, token) =>
-      `claude mcp add icons0 \\\n  --transport http \\\n  --header "Authorization: Bearer ${token}" \\\n  ${url}`,
+      `claude mcp add icons0 \\\n  --header "Authorization: Bearer ${token}" \\\n  --transport http \\\n  ${url}`,
   },
   {
     id: "codex",
