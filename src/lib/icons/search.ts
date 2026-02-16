@@ -5,6 +5,7 @@ import { db } from "../db/connection";
 
 const google = createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_API_KEY });
 const queryEmbeddingModel = google.embedding("gemini-embedding-001");
+const MAX_HYBRID_WINDOW = 1500;
 
 
 export type SearchResult = {
@@ -35,27 +36,33 @@ export async function hybridSearch(
   offset: number,
   license?: string,
 ): Promise<SearchResult[] | null> {
-  const bm25Query = buildBm25Query(query);
+  const normalizedQuery = query.trim();
+  const normalizedCollection = collection?.trim().toLowerCase();
+  const normalizedCategory = category?.trim();
+  const normalizedLicense = license?.trim();
+
+  const bm25Query = buildBm25Query(normalizedQuery);
 
   let vectorQuery: number[] | null = null;
-  try {
-    const { embedding } = await embed({
-      model: queryEmbeddingModel,
-      value: query,
-      providerOptions: {
-        google: { outputDimensionality: 256, taskType: "RETRIEVAL_QUERY" },
-      },
-    });
-    vectorQuery = embedding;
-  } catch {
-    // Embedding API unavailable — fall back to FTS only
+  if (normalizedQuery) {
+    try {
+      const { embedding } = await embed({
+        model: queryEmbeddingModel,
+        value: normalizedQuery,
+        providerOptions: {
+          google: { outputDimensionality: 256, taskType: "RETRIEVAL_QUERY" },
+        },
+      });
+      vectorQuery = embedding;
+    } catch {
+      // Embedding API unavailable — fall back to FTS only
+    }
   }
 
   if (!bm25Query && !vectorQuery) return null;
 
-  const k = Math.max(limit + offset + 20, 60);
-  // Optimized: use IN(subquery) for license filter to avoid JSON parsing per-row in the join
-  const filters = sql`${collection ? sql` AND i.prefix = ${collection}` : sql``}${category ? sql` AND i.category = ${category}` : sql``}${license ? sql` AND i.prefix IN (SELECT prefix FROM collections WHERE (license::jsonb)->>'title' = ${license})` : sql``}`;
+  const k = Math.min(Math.max(limit + offset + 20, 60), MAX_HYBRID_WINDOW);
+  const filters = sql`${normalizedCollection ? sql` AND i.prefix = ${normalizedCollection}` : sql``}${normalizedCategory ? sql` AND LOWER(i.category) = LOWER(${normalizedCategory})` : sql``}${normalizedLicense ? sql` AND i.prefix IN (SELECT prefix FROM collections WHERE LOWER((license::jsonb)->>'title') = LOWER(${normalizedLicense}))` : sql``}`;
 
   if (bm25Query && vectorQuery) {
     const vectorStr = `[${vectorQuery.join(",")}]`;
@@ -66,7 +73,7 @@ export async function hybridSearch(
             i.id AS icon_id,
             row_number() OVER (ORDER BY i.search_text <@> to_bm25query(${bm25Query}, 'icons_bm25_idx')) AS rank_number
           FROM icons i
-          WHERE i.search_text IS NOT NULL
+          WHERE i.search_text IS NOT NULL ${filters}
           ORDER BY i.search_text <@> to_bm25query(${bm25Query}, 'icons_bm25_idx')
           LIMIT ${k}
         ),
@@ -75,7 +82,7 @@ export async function hybridSearch(
             i.id AS icon_id,
             row_number() OVER (ORDER BY i.embedding <=> ${vectorStr}::vector) AS rank_number
           FROM icons i
-          WHERE i.embedding IS NOT NULL
+          WHERE i.embedding IS NOT NULL ${filters}
           ORDER BY i.embedding <=> ${vectorStr}::vector
           LIMIT ${k}
         ),
@@ -99,7 +106,7 @@ export async function hybridSearch(
         JOIN icons i ON i.id = rrf.icon_id
         JOIN collections c ON c.prefix = i.prefix
         WHERE 1=1 ${filters}
-        ORDER BY rrf.score DESC
+        ORDER BY rrf.score DESC, i.id ASC
         LIMIT ${limit + 1} OFFSET ${offset}
       `);
       return rows as SearchResult[];
@@ -120,7 +127,7 @@ export async function hybridSearch(
       FROM icons i
       JOIN collections c ON c.prefix = i.prefix
       WHERE i.search_text IS NOT NULL ${filters}
-      ORDER BY i.search_text <@> to_bm25query(${bm25Query}, 'icons_bm25_idx')
+      ORDER BY i.search_text <@> to_bm25query(${bm25Query}, 'icons_bm25_idx'), i.id ASC
       LIMIT ${limit + 1} OFFSET ${offset}
     `);
     return rows as SearchResult[];
@@ -139,7 +146,7 @@ export async function hybridSearch(
       FROM icons i
       JOIN collections c ON c.prefix = i.prefix
       WHERE i.embedding IS NOT NULL ${filters}
-      ORDER BY i.embedding <=> ${vectorStr}::vector
+      ORDER BY i.embedding <=> ${vectorStr}::vector, i.id ASC
       LIMIT ${limit + 1} OFFSET ${offset}
     `);
     return rows as SearchResult[];

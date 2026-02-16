@@ -12,8 +12,7 @@ function makeIconContent(
   icon: { body: string; width: number; height: number }
 ): string {
   const { svg } = renderIconSvg(icon);
-  const component = svgToReactComponent(svg, fullName);
-  return `import type { SVGProps } from "react";\n\n${component}\n`;
+  return svgToReactComponent(svg, fullName);
 }
 
 function extractComponentName(content: string): string {

@@ -2,17 +2,14 @@
 
 import { randomBytes } from "crypto";
 import { headers } from "next/headers";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db/connection";
 import { apiToken } from "@/lib/db/schema";
+import { createApiTokenMaterial } from "@/lib/security/api-token";
 
 function generateId() {
   return randomBytes(16).toString("hex");
-}
-
-function generateToken() {
-  return `i0_${randomBytes(24).toString("base64url")}`;
 }
 
 async function requireUser() {
@@ -23,12 +20,14 @@ async function requireUser() {
 
 export async function createApiToken(name: string) {
   const user = await requireUser();
-  const token = generateToken();
+  const { token, tokenPrefix, tokenHash } = createApiTokenMaterial();
 
   await db.insert(apiToken).values({
     id: generateId(),
     name,
-    token,
+    tokenPrefix,
+    tokenHash,
+    scopes: JSON.stringify(["icons:read"]),
     userId: user.id,
   });
 
@@ -41,15 +40,19 @@ export async function listApiTokens() {
     .select({
       id: apiToken.id,
       name: apiToken.name,
+      scopes: apiToken.scopes,
       createdAt: apiToken.createdAt,
+      lastUsedAt: apiToken.lastUsedAt,
+      revokedAt: apiToken.revokedAt,
     })
     .from(apiToken)
-    .where(eq(apiToken.userId, user.id));
+    .where(and(eq(apiToken.userId, user.id), isNull(apiToken.revokedAt)));
 }
 
 export async function deleteApiToken(id: string) {
   const user = await requireUser();
   await db
-    .delete(apiToken)
-    .where(eq(apiToken.id, id));
+    .update(apiToken)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(apiToken.id, id), eq(apiToken.userId, user.id), isNull(apiToken.revokedAt)));
 }

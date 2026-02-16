@@ -1,4 +1,4 @@
-import { relations, sql } from "drizzle-orm";
+import { relations } from "drizzle-orm";
 import { pgTable, text, integer, serial, boolean, timestamp, uniqueIndex, index, vector } from "drizzle-orm/pg-core";
 
 export const collections = pgTable(
@@ -159,7 +159,11 @@ export const apiToken = pgTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
-    token: text("token").notNull().unique(),
+    tokenPrefix: text("token_prefix").notNull().unique(),
+    tokenHash: text("token_hash").notNull().unique(),
+    scopes: text("scopes").notNull().default('["icons:read"]'),
+    lastUsedAt: timestamp("last_used_at"),
+    revokedAt: timestamp("revoked_at"),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -167,7 +171,10 @@ export const apiToken = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [index("api_token_userId_idx").on(table.userId)],
+  (table) => [
+    index("api_token_userId_idx").on(table.userId),
+    index("api_token_revokedAt_idx").on(table.revokedAt),
+  ],
 );
 
 export const userRelations = relations(user, ({ many }) => ({

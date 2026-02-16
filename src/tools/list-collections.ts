@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { like, eq, and, type SQL } from "drizzle-orm";
+import { ilike, eq, and, type SQL } from "drizzle-orm";
 import { type ToolMetadata, type InferSchema } from "xmcp";
 import { db } from "../lib/db/connection";
 import { collections } from "../lib/db/schema";
+import { failure, parseJsonSafe, success } from "../lib/mcp/response";
 
 export const schema = {
   category: z.string().optional().describe(
@@ -29,39 +30,50 @@ export default async function listCollections({
   category,
   search,
 }: InferSchema<typeof schema>) {
-  const conditions: SQL[] = [];
-  if (category) conditions.push(eq(collections.category, category));
-  if (search) conditions.push(like(collections.name, `%${search}%`));
+  try {
+    const normalizedCategory = category?.trim();
+    const normalizedSearch = search?.trim();
 
-  const rows = await db
-    .select({
-      prefix: collections.prefix,
-      name: collections.name,
-      total: collections.total,
-      category: collections.category,
-      license: collections.license,
-      author: collections.author,
-      palette: collections.palette,
-      samples: collections.samples,
-    })
-    .from(collections)
-    .where(conditions.length > 0 ? and(...conditions) : undefined);
+    const conditions: SQL[] = [];
+    if (normalizedCategory) {
+      conditions.push(eq(collections.category, normalizedCategory));
+    }
+    if (normalizedSearch) {
+      conditions.push(ilike(collections.name, `%${normalizedSearch}%`));
+    }
 
-  const result = rows.map((row) => ({
-    prefix: row.prefix,
-    name: row.name,
-    total: row.total,
-    category: row.category,
-    license: row.license ? JSON.parse(row.license) : null,
-    author: row.author ? JSON.parse(row.author) : null,
-    palette: row.palette,
-    samples: row.samples ? JSON.parse(row.samples) : [],
-  }));
+    const rows = await db
+      .select({
+        prefix: collections.prefix,
+        name: collections.name,
+        total: collections.total,
+        category: collections.category,
+        license: collections.license,
+        author: collections.author,
+        palette: collections.palette,
+        samples: collections.samples,
+      })
+      .from(collections)
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
 
-  const data = { total: result.length, collections: result };
+    const result = rows.map((row) => ({
+      prefix: row.prefix,
+      name: row.name,
+      total: row.total,
+      category: row.category,
+      license: parseJsonSafe<Record<string, unknown>>(row.license),
+      author: parseJsonSafe<Record<string, unknown>>(row.author),
+      palette: row.palette,
+      samples: parseJsonSafe<string[]>(row.samples) ?? [],
+    }));
 
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-    structuredContent: data,
-  };
+    return success({ total: result.length, collections: result });
+  } catch {
+    return failure({
+      code: "INTERNAL",
+      message: "Failed to list icon collections.",
+      retryable: true,
+      hint: "Retry the request. If the issue persists, check database connectivity.",
+    });
+  }
 }

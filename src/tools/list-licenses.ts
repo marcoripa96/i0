@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { type ToolMetadata } from "xmcp";
 import { db } from "../lib/db/connection";
+import { failure, success } from "../lib/mcp/response";
 
 export const schema = {};
 
@@ -20,30 +21,41 @@ export const metadata: ToolMetadata = {
 type LicenseRow = {
   title: string;
   spdx: string | null;
-  collections: number;
-  totalIcons: number;
+  collections: number | string;
+  totalIcons: number | string;
 };
 
 export default async function listLicenses() {
-  const rows = await db.execute<LicenseRow>(sql`
-    SELECT
-      (c.license::jsonb)->>'title' AS title,
-      (c.license::jsonb)->>'spdx' AS spdx,
-      COUNT(*) AS collections,
-      SUM(c.total) AS "totalIcons"
-    FROM collections c
-    WHERE c.license IS NOT NULL
-    GROUP BY (c.license::jsonb)->>'title', (c.license::jsonb)->>'spdx'
-    ORDER BY "totalIcons" DESC
-  `);
+  try {
+    const rows = await db.execute<LicenseRow>(sql`
+      SELECT
+        (c.license::jsonb)->>'title' AS title,
+        (c.license::jsonb)->>'spdx' AS spdx,
+        COUNT(*) AS collections,
+        SUM(c.total) AS "totalIcons"
+      FROM collections c
+      WHERE c.license IS NOT NULL
+      GROUP BY (c.license::jsonb)->>'title', (c.license::jsonb)->>'spdx'
+      ORDER BY "totalIcons" DESC
+    `);
 
-  const data = {
-    total: (rows as LicenseRow[]).length,
-    licenses: rows as LicenseRow[],
-  };
+    const licenses = (rows as LicenseRow[]).map((row) => ({
+      title: row.title,
+      spdx: row.spdx,
+      collections: Number(row.collections),
+      totalIcons: Number(row.totalIcons),
+    }));
 
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-    structuredContent: data,
-  };
+    return success({
+      total: licenses.length,
+      licenses,
+    });
+  } catch {
+    return failure({
+      code: "INTERNAL",
+      message: "Failed to list licenses.",
+      retryable: true,
+      hint: "Retry the request. If the issue persists, check database connectivity.",
+    });
+  }
 }
