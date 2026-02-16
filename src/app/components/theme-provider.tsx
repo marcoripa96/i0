@@ -32,24 +32,26 @@ export function ThemeProvider({
   }
 
   const toggleTheme = useCallback(() => {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
+    setTheme((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
 
-    // Disable all transitions during the theme switch to avoid lag
-    const style = document.createElement("style");
-    style.textContent = "*, *::before, *::after { transition: none !important; }";
-    document.head.appendChild(style);
+      // Disable all transitions during the theme switch to avoid lag
+      const style = document.createElement("style");
+      style.textContent = "*, *::before, *::after { transition: none !important; }";
+      document.head.appendChild(style);
 
-    document.documentElement.classList.toggle("dark", next === "dark");
+      document.documentElement.classList.toggle("dark", next === "dark");
 
-    // Force a reflow so the browser applies colors without transitions
-    document.body.offsetHeight; // eslint-disable-line @typescript-eslint/no-unused-expressions
+      // Force a reflow so the browser applies colors without transitions
+      document.body.offsetHeight; // eslint-disable-line @typescript-eslint/no-unused-expressions
 
-    // Re-enable transitions on the next frame
-    requestAnimationFrame(() => style.remove());
+      // Re-enable transitions on the next frame
+      requestAnimationFrame(() => style.remove());
 
-    setThemeCookie(next);
-  }, [theme]);
+      setThemeCookie(next);
+      return next;
+    });
+  }, []);
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { getIconCode } from "@/app/actions";
 import { useCopyFormat } from "./copy-format-provider";
@@ -103,11 +102,9 @@ export function IconCard({ icon }: { icon: IconData }) {
   }
 
   return (
-    <motion.button
+    <button
       onClick={handleClick}
-      whileTap={{ scale: 0.92 }}
-      transition={{ duration: 0.1 }}
-      className={`group flex flex-col items-center gap-2.5 border border-border bg-background p-4 -mb-px -mr-px ${
+      className={`icon-card group flex flex-col items-center gap-2.5 border border-border bg-background p-4 -mb-px -mr-px transition-transform duration-100 active:scale-[0.92] ${
         copied
           ? "bg-primary text-primary-foreground"
           : isPending
@@ -116,36 +113,21 @@ export function IconCard({ icon }: { icon: IconData }) {
       }`}
     >
       <div className="relative flex h-10 w-10 items-center justify-center">
-        <AnimatePresence mode="wait" initial={false}>
-          {copied ? (
-            <motion.div
-              key="check"
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              transition={{ duration: 0.15 }}
-            >
-              <CheckIcon size={24} />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="icon"
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="text-foreground"
-            >
-              <InlineSvg
-                body={icon.body}
-                width={icon.width}
-                height={icon.height}
-                size={24}
-                className="fill-current"
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {copied ? (
+          <div className="animate-in zoom-in-0 duration-150">
+            <CheckIcon size={24} />
+          </div>
+        ) : (
+          <div className="text-foreground">
+            <InlineSvg
+              body={icon.body}
+              width={icon.width}
+              height={icon.height}
+              size={24}
+              className="fill-current"
+            />
+          </div>
+        )}
       </div>
       <div className="w-full min-w-0 text-center">
         <p className={`truncate font-mono text-[10px] ${
@@ -155,12 +137,12 @@ export function IconCard({ icon }: { icon: IconData }) {
         }`}>
           {copied ? "copied!" : icon.name}
         </p>
-        {icon.collection && !copied && (
+        {icon.collection && !copied ? (
           <p className="truncate font-mono text-[9px] text-muted-foreground/60">
             {icon.prefix}
           </p>
-        )}
+        ) : null}
       </div>
-    </motion.button>
+    </button>
   );
 }

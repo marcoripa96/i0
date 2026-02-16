@@ -90,6 +90,10 @@
   [data-slot="command-list"] {
     scrollbar-color: var(--border) var(--popover);
   }
+  .icon-card {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 88px;
+  }
   body::before {
     content: "";
     position: fixed;

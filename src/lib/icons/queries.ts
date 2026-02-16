@@ -213,30 +213,11 @@ export async function browseIcons(
   cacheLife("hours");
   cacheTag(prefix);
 
-  const [collectionRow] = await db
-    .select()
-    .from(collections)
-    .where(eq(collections.prefix, prefix))
-    .limit(1);
-
-  const parsedCollection: CollectionRow | null = collectionRow
-    ? {
-        ...collectionRow,
-        author: collectionRow.author ? JSON.parse(collectionRow.author) : null,
-        license: collectionRow.license ? JSON.parse(collectionRow.license) : null,
-        samples: collectionRow.samples ? JSON.parse(collectionRow.samples) : null,
-      }
-    : null;
-
-  if (license && (!parsedCollection?.license || parsedCollection.license.title !== license)) {
-    return { results: [], hasMore: false, collection: parsedCollection };
-  }
-
   const conditions = category
     ? and(eq(icons.prefix, prefix), eq(icons.category, category))
     : eq(icons.prefix, prefix);
 
-  const rows = await db
+  const iconsQuery = db
     .select({
       id: icons.id,
       prefix: icons.prefix,
@@ -252,6 +233,27 @@ export async function browseIcons(
     .where(conditions)
     .limit(limit + 1)
     .offset(offset);
+
+  const collectionQuery = db
+    .select()
+    .from(collections)
+    .where(eq(collections.prefix, prefix))
+    .limit(1);
+
+  const [rows, [collectionRow]] = await Promise.all([iconsQuery, collectionQuery]);
+
+  const parsedCollection: CollectionRow | null = collectionRow
+    ? {
+        ...collectionRow,
+        author: collectionRow.author ? JSON.parse(collectionRow.author) : null,
+        license: collectionRow.license ? JSON.parse(collectionRow.license) : null,
+        samples: collectionRow.samples ? JSON.parse(collectionRow.samples) : null,
+      }
+    : null;
+
+  if (license && (!parsedCollection?.license || parsedCollection.license.title !== license)) {
+    return { results: [], hasMore: false, collection: parsedCollection };
+  }
 
   return {
     results: rows.slice(0, limit).map((r) => ({

@@ -18,7 +18,7 @@ import { IconGrid } from "./components/icon-grid";
 import { CollectionsGrid } from "./components/collections-grid";
 import { LicenseBadge } from "./components/license-badge";
 import { InstallCommand } from "./components/install-command";
-import { Signature } from "./components/signature";
+import { LazySignature } from "./components/lazy-signature";
 import { McpDialog } from "./components/mcp-dialog";
 import { UserMenu } from "./components/user-menu";
 import {
@@ -238,8 +238,15 @@ async function CollectionsView({ license }: { license?: string }) {
 
 async function BrowseAllIconsView({ license }: { license?: string }) {
   const t0 = performance.now();
-  const data = await browseAllIcons(60, 0, license);
+  const [data, allCollections] = await Promise.all([
+    browseAllIcons(60, 0, license),
+    getCollections(),
+  ]);
   const durationMs = Math.round(performance.now() - t0);
+  const filtered = license
+    ? allCollections.filter((c) => c.license?.title === license)
+    : allCollections;
+  const totalIcons = filtered.reduce((sum, c) => sum + c.total, 0);
   const results = data.results.map((r) => ({
     fullName: r.fullName,
     name: r.name,
@@ -252,8 +259,9 @@ async function BrowseAllIconsView({ license }: { license?: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="font-mono text-xs text-muted-foreground/40">
-        {durationMs}ms
+      <p className="font-mono text-xs text-muted-foreground">
+        {totalIcons.toLocaleString()} icons
+        <span className="text-muted-foreground/40"> · {durationMs}ms</span>
       </p>
       <IconGrid
         key={`browse-all-${license ?? ""}`}
@@ -396,7 +404,7 @@ export default function Home({
         </p>
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-[10px] text-muted-foreground/40">made by</span>
-          <Signature />
+          <LazySignature />
         </div>
       </footer>
     </div>
