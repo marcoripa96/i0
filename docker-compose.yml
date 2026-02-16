@@ -1,0 +1,17 @@
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile.pg
+    shm_size: 256mb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+volumes:
+  pgdata:

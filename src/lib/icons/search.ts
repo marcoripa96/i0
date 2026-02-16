@@ -20,12 +20,11 @@ function sanitizeQuery(query: string): string {
   return query.replace(/['"*(){}[\]:^~!@#$%&\\|<>+=;,./?]/g, " ").trim();
 }
 
-export function buildFtsQuery(query: string): string {
+export function buildBm25Query(query: string): string {
   const sanitized = sanitizeQuery(query);
   const tokens = sanitized.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return "";
-  const parts = tokens.map((t, i) => (i === tokens.length - 1 ? `${t}*` : t));
-  return parts.join(" ");
+  return tokens.join(" ");
 }
 
 export async function hybridSearch(
@@ -36,9 +35,9 @@ export async function hybridSearch(
   offset: number,
   license?: string,
 ): Promise<SearchResult[] | null> {
-  const ftsQuery = buildFtsQuery(query);
+  const bm25Query = buildBm25Query(query);
 
-  let vectorQuery: string | null = null;
+  let vectorQuery: number[] | null = null;
   try {
     const { embedding } = await embed({
       model: queryEmbeddingModel,
@@ -47,44 +46,50 @@ export async function hybridSearch(
         google: { outputDimensionality: 256, taskType: "RETRIEVAL_QUERY" },
       },
     });
-    vectorQuery = JSON.stringify(embedding);
+    vectorQuery = embedding;
   } catch {
     // Embedding API unavailable — fall back to FTS only
   }
 
-  if (!ftsQuery && !vectorQuery) return null;
+  if (!bm25Query && !vectorQuery) return null;
 
   const k = Math.max(limit + offset + 20, 60);
-  const filters = sql`${collection ? sql` AND i.prefix = ${collection}` : sql``}${category ? sql` AND i.category = ${category}` : sql``}${license ? sql` AND json_extract(c.license, '$.title') = ${license}` : sql``}`;
+  // Optimized: use IN(subquery) for license filter to avoid JSON parsing per-row in the join
+  const filters = sql`${collection ? sql` AND i.prefix = ${collection}` : sql``}${category ? sql` AND i.category = ${category}` : sql``}${license ? sql` AND i.prefix IN (SELECT prefix FROM collections WHERE (license::jsonb)->>'title' = ${license})` : sql``}`;
 
-  if (ftsQuery && vectorQuery) {
+  if (bm25Query && vectorQuery) {
+    const vectorStr = `[${vectorQuery.join(",")}]`;
     try {
-      return await db.all<SearchResult>(sql`
-        WITH fts_matches AS (
+      const rows = await db.execute<SearchResult>(sql`
+        WITH bm25_matches AS (
           SELECT
-            fts.rowid AS icon_id,
-            row_number() OVER (ORDER BY bm25(icons_fts, 2.0, 10.0, 1.0, 1.0, 0.5)) AS rank_number
-          FROM icons_fts fts
-          WHERE icons_fts MATCH ${ftsQuery}
+            i.id AS icon_id,
+            row_number() OVER (ORDER BY i.search_text <@> to_bm25query(${bm25Query}, 'icons_bm25_idx')) AS rank_number
+          FROM icons i
+          WHERE i.search_text IS NOT NULL
+          ORDER BY i.search_text <@> to_bm25query(${bm25Query}, 'icons_bm25_idx')
           LIMIT ${k}
         ),
         vec_matches AS (
           SELECT
-            v.id AS icon_id,
-            row_number() OVER () AS rank_number
-          FROM vector_top_k('icons_embedding_idx', vector32(${vectorQuery}), ${k}) AS v
+            i.id AS icon_id,
+            row_number() OVER (ORDER BY i.embedding <=> ${vectorStr}::vector) AS rank_number
+          FROM icons i
+          WHERE i.embedding IS NOT NULL
+          ORDER BY i.embedding <=> ${vectorStr}::vector
+          LIMIT ${k}
         ),
         rrf AS (
           SELECT
-            COALESCE(fts.icon_id, vec.icon_id) AS icon_id,
-            COALESCE(1.0 / (60 + fts.rank_number), 0.0) +
+            COALESCE(bm25.icon_id, vec.icon_id) AS icon_id,
+            COALESCE(1.0 / (60 + bm25.rank_number), 0.0) +
             COALESCE(1.0 / (60 + vec.rank_number), 0.0)
               AS score
-          FROM fts_matches fts
-          FULL OUTER JOIN vec_matches vec ON fts.icon_id = vec.icon_id
+          FROM bm25_matches bm25
+          FULL OUTER JOIN vec_matches vec ON bm25.icon_id = vec.icon_id
         )
         SELECT
-          i.full_name AS fullName,
+          i.full_name AS "fullName",
           i.name,
           i.prefix,
           c.name AS collection,
@@ -97,46 +102,49 @@ export async function hybridSearch(
         ORDER BY rrf.score DESC
         LIMIT ${limit + 1} OFFSET ${offset}
       `);
+      return rows as SearchResult[];
     } catch {
-      // Vector index unavailable — fall through to FTS-only
+      // Vector index unavailable — fall through to BM25-only
     }
   }
 
-  if (ftsQuery) {
-    return db.all<SearchResult>(sql`
+  if (bm25Query) {
+    const rows = await db.execute<SearchResult>(sql`
       SELECT
-        i.full_name AS fullName,
+        i.full_name AS "fullName",
         i.name,
         i.prefix,
         c.name AS collection,
         i.category,
         i.tags
-      FROM icons_fts fts
-      JOIN icons i ON i.id = fts.rowid
+      FROM icons i
       JOIN collections c ON c.prefix = i.prefix
-      WHERE icons_fts MATCH ${ftsQuery} ${filters}
-      ORDER BY bm25(icons_fts, 2.0, 10.0, 1.0, 1.0, 0.5)
+      WHERE i.search_text IS NOT NULL ${filters}
+      ORDER BY i.search_text <@> to_bm25query(${bm25Query}, 'icons_bm25_idx')
       LIMIT ${limit + 1} OFFSET ${offset}
     `);
+    return rows as SearchResult[];
   }
 
   try {
-    return await db.all<SearchResult>(sql`
+    const vectorStr = `[${vectorQuery!.join(",")}]`;
+    const rows = await db.execute<SearchResult>(sql`
       SELECT
-        i.full_name AS fullName,
+        i.full_name AS "fullName",
         i.name,
         i.prefix,
         c.name AS collection,
         i.category,
         i.tags
-      FROM vector_top_k('icons_embedding_idx', vector32(${vectorQuery!}), ${k}) AS v
-      JOIN icons i ON i.id = v.id
+      FROM icons i
       JOIN collections c ON c.prefix = i.prefix
-      WHERE 1=1 ${filters}
+      WHERE i.embedding IS NOT NULL ${filters}
+      ORDER BY i.embedding <=> ${vectorStr}::vector
       LIMIT ${limit + 1} OFFSET ${offset}
     `);
+    return rows as SearchResult[];
   } catch {
-    // Vector index unavailable and no FTS query
+    // Vector index unavailable and no BM25 query
     return null;
   }
 }

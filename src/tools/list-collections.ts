@@ -45,8 +45,7 @@ export default async function listCollections({
       samples: collections.samples,
     })
     .from(collections)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .all();
+    .where(conditions.length > 0 ? and(...conditions) : undefined);
 
   const result = rows.map((row) => ({
     prefix: row.prefix,

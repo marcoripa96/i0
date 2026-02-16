@@ -1,12 +1,8 @@
-import { createClient } from "@libsql/client";
-import type { InStatement } from "@libsql/client";
+import { db } from "./connection";
+import { icons } from "./schema";
+import { sql, eq, isNull } from "drizzle-orm";
 import { embedMany } from "ai";
 import { createGateway } from "@ai-sdk/gateway";
-
-const client = createClient({
-  url: process.env.TURSO_DATABASE_URL!,
-  authToken: process.env.TURSO_AUTH_TOKEN!,
-});
 
 const gateway = createGateway({ apiKey: process.env.VERCEL_AI_GATEWAY });
 const embeddingModel = gateway.embeddingModel("google/gemini-embedding-001");
@@ -40,23 +36,21 @@ async function seedEmbeddings() {
   const startTime = Date.now();
 
   // Fetch all icons without embeddings
-  const result = await client.execute(
-    "SELECT id, name, tags, category FROM icons WHERE embedding IS NULL",
-  );
-  const icons = result.rows;
-  console.log(`Found ${icons.length} icons to embed`);
+  const rows = await db
+    .select({ id: icons.id, name: icons.name, tags: icons.tags, category: icons.category })
+    .from(icons)
+    .where(isNull(icons.embedding));
+  console.log(`Found ${rows.length} icons to embed`);
 
-  if (icons.length === 0) {
+  if (rows.length === 0) {
     console.log("All icons already have embeddings.");
-    // Still ensure vector index exists
-    await ensureVectorIndex();
     return;
   }
 
   let processed = 0;
 
-  for (let i = 0; i < icons.length; i += EMBED_BATCH) {
-    const chunk = icons.slice(i, i + EMBED_BATCH);
+  for (let i = 0; i < rows.length; i += EMBED_BATCH) {
+    const chunk = rows.slice(i, i + EMBED_BATCH);
     const texts = chunk.map((icon) =>
       `${icon.name} ${icon.tags || ""} ${icon.category || ""}`.trim(),
     );
@@ -76,34 +70,26 @@ async function seedEmbeddings() {
     );
 
     // Update each icon with its embedding
-    const updateStmts: InStatement[] = chunk.map((icon, j) => ({
-      sql: "UPDATE icons SET embedding = vector32(?) WHERE id = ?",
-      args: [`[${embeddings[j].join(",")}]`, icon.id as number],
-    }));
-    await client.batch(updateStmts, "write");
+    for (let j = 0; j < chunk.length; j++) {
+      const vectorStr = `[${embeddings[j].join(",")}]`;
+      await db.execute(
+        sql`UPDATE icons SET embedding = ${vectorStr}::vector WHERE id = ${chunk[j].id}`
+      );
+    }
 
     processed += chunk.length;
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
     const rate = (processed / parseInt(elapsed || "1")).toFixed(1);
-    console.log(`  ${processed}/${icons.length} embedded (${elapsed}s, ${rate}/s)`);
+    console.log(`  ${processed}/${rows.length} embedded (${elapsed}s, ${rate}/s)`);
 
     // Rate limit delay between batches
-    if (i + EMBED_BATCH < icons.length) {
+    if (i + EMBED_BATCH < rows.length) {
       await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
     }
   }
 
-  await ensureVectorIndex();
-
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`Done! ${processed} embeddings seeded in ${elapsed}s`);
-}
-
-async function ensureVectorIndex() {
-  console.log("Ensuring vector index exists...");
-  await client.execute(
-    "CREATE INDEX IF NOT EXISTS icons_embedding_idx ON icons(libsql_vector_idx(embedding))",
-  );
 }
 
 seedEmbeddings().catch((err) => {

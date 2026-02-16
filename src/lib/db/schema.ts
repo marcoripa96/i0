@@ -1,40 +1,29 @@
 import { relations, sql } from "drizzle-orm";
-import { sqliteTable, text, integer, uniqueIndex, index, customType } from "drizzle-orm/sqlite-core";
+import { pgTable, text, integer, serial, boolean, timestamp, uniqueIndex, index, vector } from "drizzle-orm/pg-core";
 
-const float32Array = customType<{
-  data: number[];
-  config: { dimensions: number };
-  configRequired: true;
-  driverData: Buffer;
-}>({
-  dataType(config) {
-    return `F32_BLOB(${config.dimensions})`;
+export const collections = pgTable(
+  "collections",
+  {
+    prefix: text("prefix").primaryKey(),
+    name: text("name").notNull(),
+    total: integer("total").notNull(),
+    author: text("author"),
+    license: text("license"),
+    category: text("category"),
+    palette: boolean("palette"),
+    height: integer("height"),
+    version: text("version"),
+    samples: text("samples"),
   },
-  fromDriver(value: Buffer) {
-    return Array.from(new Float32Array(value.buffer));
-  },
-  toDriver(value: number[]) {
-    return sql`vector32(${JSON.stringify(value)})`;
-  },
-});
+  (table) => [
+    index("collections_category_idx").on(table.category),
+  ]
+);
 
-export const collections = sqliteTable("collections", {
-  prefix: text("prefix").primaryKey(),
-  name: text("name").notNull(),
-  total: integer("total").notNull(),
-  author: text("author"),
-  license: text("license"),
-  category: text("category"),
-  palette: integer("palette", { mode: "boolean" }),
-  height: integer("height"),
-  version: text("version"),
-  samples: text("samples"),
-});
-
-export const icons = sqliteTable(
+export const icons = pgTable(
   "icons",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
+    id: serial("id").primaryKey(),
     prefix: text("prefix").notNull(),
     name: text("name").notNull(),
     fullName: text("full_name").notNull(),
@@ -43,45 +32,50 @@ export const icons = sqliteTable(
     height: integer("height"),
     category: text("category"),
     tags: text("tags"),
-    embedding: float32Array("embedding", { dimensions: 256 }),
+    searchText: text("search_text"),
+    embedding: vector("embedding", { dimensions: 256 }),
   },
   (table) => [
     uniqueIndex("icons_full_name_idx").on(table.fullName),
-    index("icons_prefix_idx").on(table.prefix),
+    index("icons_prefix_name_idx").on(table.prefix, table.name),
     index("icons_category_idx").on(table.category),
+    index("icons_category_prefix_name_idx").on(table.category, table.prefix, table.name),
+    index("icons_prefix_category_idx").on(table.prefix, table.category),
+    index("icons_embedding_idx").using("hnsw", table.embedding.op("vector_cosine_ops")),
   ]
 );
 
 // Better Auth tables
 
-export const user = sqliteTable("user", {
+export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  emailVerified: integer("email_verified", { mode: "boolean" })
+  emailVerified: boolean("email_verified")
     .default(false)
     .notNull(),
   image: text("image"),
   searchLimit: integer("search_limit").default(100).notNull(),
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+  createdAt: timestamp("created_at")
+    .defaultNow()
     .notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
 });
 
-export const session = sqliteTable(
+export const session = pgTable(
   "session",
   {
     id: text("id").primaryKey(),
-    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
     token: text("token").notNull().unique(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    createdAt: timestamp("created_at")
+      .defaultNow()
       .notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
     ipAddress: text("ip_address"),
@@ -93,7 +87,7 @@ export const session = sqliteTable(
   (table) => [index("session_userId_idx").on(table.userId)],
 );
 
-export const account = sqliteTable(
+export const account = pgTable(
   "account",
   {
     id: text("id").primaryKey(),
@@ -105,46 +99,43 @@ export const account = sqliteTable(
     accessToken: text("access_token"),
     refreshToken: text("refresh_token"),
     idToken: text("id_token"),
-    accessTokenExpiresAt: integer("access_token_expires_at", {
-      mode: "timestamp_ms",
-    }),
-    refreshTokenExpiresAt: integer("refresh_token_expires_at", {
-      mode: "timestamp_ms",
-    }),
+    accessTokenExpiresAt: timestamp("access_token_expires_at"),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
     scope: text("scope"),
     password: text("password"),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    createdAt: timestamp("created_at")
+      .defaultNow()
       .notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [index("account_userId_idx").on(table.userId)],
 );
 
-export const verification = sqliteTable(
+export const verification = pgTable(
   "verification",
   {
     id: text("id").primaryKey(),
     identifier: text("identifier").notNull(),
     value: text("value").notNull(),
-    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at")
+      .defaultNow()
       .notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
-export const dailyUsage = sqliteTable(
+export const dailyUsage = pgTable(
   "daily_usage",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
+    id: serial("id").primaryKey(),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -163,7 +154,7 @@ export const dailyUsageRelations = relations(dailyUsage, ({ one }) => ({
   }),
 }));
 
-export const apiToken = sqliteTable(
+export const apiToken = pgTable(
   "api_token",
   {
     id: text("id").primaryKey(),
@@ -172,8 +163,8 @@ export const apiToken = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    createdAt: timestamp("created_at")
+      .defaultNow()
       .notNull(),
   },
   (table) => [index("api_token_userId_idx").on(table.userId)],

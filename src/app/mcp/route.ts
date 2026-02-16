@@ -6,11 +6,11 @@ import { apiToken } from "@/lib/db/schema";
 const verifyToken: VerifyToken = async (_req, bearerToken) => {
   if (!bearerToken) return undefined;
 
-  const result = await db
+  const [result] = await db
     .select({ userId: apiToken.userId })
     .from(apiToken)
     .where(eq(apiToken.token, bearerToken))
-    .get();
+    .limit(1);
 
   if (!result) return undefined;
 

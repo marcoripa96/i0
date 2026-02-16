@@ -46,11 +46,11 @@ export const metadata: ToolMetadata = {
 };
 
 async function collectionExists(prefix: string): Promise<boolean> {
-  const result = await db
+  const [result] = await db
     .select({ prefix: collections.prefix })
     .from(collections)
     .where(eq(collections.prefix, prefix))
-    .get();
+    .limit(1);
   return !!result;
 }
 
@@ -77,21 +77,21 @@ function todayDate() {
 }
 
 async function checkAndIncrementUsage(userId: string): Promise<string | null> {
-  const userData = await db
+  const [userData] = await db
     .select({ searchLimit: user.searchLimit })
     .from(user)
     .where(eq(user.id, userId))
-    .get();
+    .limit(1);
 
   if (!userData) return "User not found.";
 
   const today = todayDate();
 
-  const usage = await db
+  const [usage] = await db
     .select({ searchCount: dailyUsage.searchCount })
     .from(dailyUsage)
     .where(and(eq(dailyUsage.userId, userId), eq(dailyUsage.date, today)))
-    .get();
+    .limit(1);
 
   const currentCount = usage?.searchCount ?? 0;
 
@@ -154,7 +154,7 @@ export default async function searchIcons(
     const conditions: SQL[] = [];
     if (collection) conditions.push(eq(icons.prefix, collection));
     if (category) conditions.push(eq(icons.category, category));
-    if (license) conditions.push(sql`json_extract(${collections.license}, '$.title') = ${license}`);
+    if (license) conditions.push(sql`${icons.prefix} IN (SELECT prefix FROM collections WHERE (license::jsonb)->>'title' = ${license})`);
 
     const rows = (
       await db
@@ -169,9 +169,9 @@ export default async function searchIcons(
         .from(icons)
         .innerJoin(collections, eq(icons.prefix, collections.prefix))
         .where(and(...conditions))
+        .orderBy(icons.prefix, icons.name)
         .limit(maxResults + 1)
         .offset(skip)
-        .all()
     ).map((r) => ({
       fullName: r.fullName,
       name: r.name,
@@ -184,7 +184,7 @@ export default async function searchIcons(
     return buildResponse(rows, maxResults, skip);
   }
 
-  // Search mode: hybrid FTS + semantic
+  // Search mode: hybrid BM25 + semantic
   const rows = await hybridSearch(query, collection, category, maxResults, skip, license);
 
   if (rows === null) {

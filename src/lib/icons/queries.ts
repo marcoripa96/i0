@@ -1,7 +1,7 @@
-import { sql, eq, inArray } from "drizzle-orm";
+import { sql, eq, and, inArray, isNotNull, ne, asc } from "drizzle-orm";
 import { db } from "../db/connection";
 import { collections, icons } from "../db/schema";
-import { buildFtsQuery } from "./search";
+import { buildBm25Query } from "./search";
 import { cacheLife, cacheTag } from "next/cache";
 
 export type CollectionRow = {
@@ -49,7 +49,7 @@ export async function getCollections(): Promise<CollectionWithSamples[]> {
   "use cache";
   cacheLife("max");
 
-  const rows = await db.select().from(collections).orderBy(collections.prefix).all();
+  const rows = await db.select().from(collections).orderBy(collections.prefix);
 
   const parsed: CollectionRow[] = rows.map((r) => ({
     ...r,
@@ -81,7 +81,6 @@ export async function getCollections(): Promise<CollectionWithSamples[]> {
           })
           .from(icons)
           .where(inArray(icons.fullName, sampleFullNames))
-          .all()
       : [];
 
   const sampleMap = new Map(sampleIcons.map((i) => [i.fullName, i]));
@@ -108,10 +107,12 @@ export async function getCategories(): Promise<string[]> {
   "use cache";
   cacheLife("max");
 
-  const rows = await db.all<{ category: string }>(
-    sql`SELECT DISTINCT category FROM icons WHERE category IS NOT NULL AND category != '' ORDER BY category`
-  );
-  return rows.map((r) => r.category);
+  const rows = await db
+    .selectDistinct({ category: icons.category })
+    .from(icons)
+    .where(and(isNotNull(icons.category), ne(icons.category, "")))
+    .orderBy(asc(icons.category));
+  return rows.map((r) => r.category!);
 }
 
 export async function getCategoriesForCollection(prefix: string): Promise<string[]> {
@@ -119,10 +120,14 @@ export async function getCategoriesForCollection(prefix: string): Promise<string
   cacheLife("hours");
   cacheTag(prefix);
 
-  const rows = await db.all<{ category: string }>(
-    sql`SELECT DISTINCT category FROM icons WHERE prefix = ${prefix} AND category IS NOT NULL AND category != '' ORDER BY category`
-  );
-  return rows.map((r) => r.category);
+  // Use raw SQL to leverage icons_prefix_category_idx for Index Only Scan
+  const rows = await db.execute<{ category: string }>(sql`
+    SELECT DISTINCT category
+    FROM icons
+    WHERE prefix = ${prefix} AND category IS NOT NULL AND category != ''
+    ORDER BY category ASC
+  `);
+  return (rows as { category: string }[]).map((r) => r.category);
 }
 
 export async function getCollectionPrefixesForCategory(
@@ -131,20 +136,23 @@ export async function getCollectionPrefixesForCategory(
   "use cache";
   cacheLife("hours");
 
-  const rows = await db.all<{ prefix: string }>(
-    sql`SELECT DISTINCT prefix FROM icons WHERE category = ${category}`
-  );
-  return rows.map((r) => r.prefix);
+  // Use raw SQL to leverage icons_category_prefix_name_idx for Index Only Scan
+  const rows = await db.execute<{ prefix: string }>(sql`
+    SELECT DISTINCT prefix
+    FROM icons
+    WHERE category = ${category}
+  `);
+  return (rows as { prefix: string }[]).map((r) => r.prefix);
 }
 
 export async function getLicenses(): Promise<string[]> {
   "use cache";
   cacheLife("max");
 
-  const rows = await db.all<{ title: string }>(
-    sql`SELECT DISTINCT json_extract(license, '$.title') AS title FROM collections WHERE license IS NOT NULL ORDER BY title`
+  const rows = await db.execute<{ title: string }>(
+    sql`SELECT DISTINCT (license::jsonb)->>'title' AS title FROM collections WHERE license IS NOT NULL ORDER BY title`
   );
-  return rows.map((r) => r.title);
+  return (rows as { title: string }[]).map((r) => r.title);
 }
 
 export async function searchIconsWeb(
@@ -155,8 +163,8 @@ export async function searchIconsWeb(
   offset = 0,
   license?: string,
 ): Promise<{ results: WebSearchResult[]; hasMore: boolean }> {
-  const ftsQuery = buildFtsQuery(query);
-  if (!ftsQuery) return { results: [], hasMore: false };
+  const bm25Query = buildBm25Query(query);
+  if (!bm25Query) return { results: [], hasMore: false };
 
   const collectionFilter = collection
     ? sql` AND i.prefix = ${collection}`
@@ -164,13 +172,14 @@ export async function searchIconsWeb(
   const categoryFilter = category
     ? sql` AND i.category = ${category}`
     : sql``;
+  // Optimized: use IN(subquery) instead of JOIN filter to avoid JSON parsing per-row
   const licenseFilter = license
-    ? sql` AND json_extract(c.license, '$.title') = ${license}`
+    ? sql` AND i.prefix IN (SELECT prefix FROM collections WHERE (license::jsonb)->>'title' = ${license})`
     : sql``;
 
-  const rows = await db.all<WebSearchResult>(sql`
+  const rows = await db.execute<WebSearchResult>(sql`
     SELECT
-      i.full_name AS fullName,
+      i.full_name AS "fullName",
       i.name,
       i.prefix,
       c.name AS collection,
@@ -179,17 +188,17 @@ export async function searchIconsWeb(
       COALESCE(i.height, 24) AS height,
       i.category,
       i.tags
-    FROM icons_fts fts
-    JOIN icons i ON i.id = fts.rowid
+    FROM icons i
     JOIN collections c ON c.prefix = i.prefix
-    WHERE icons_fts MATCH ${ftsQuery} ${collectionFilter} ${categoryFilter} ${licenseFilter}
-    ORDER BY bm25(icons_fts, 2.0, 10.0, 1.0, 1.0, 0.5)
+    WHERE i.search_text IS NOT NULL ${collectionFilter} ${categoryFilter} ${licenseFilter}
+    ORDER BY i.search_text <@> to_bm25query(${bm25Query}, 'icons_bm25_idx')
     LIMIT ${limit + 1} OFFSET ${offset}
   `);
 
+  const typedRows = rows as WebSearchResult[];
   return {
-    results: rows.slice(0, limit),
-    hasMore: rows.length > limit,
+    results: typedRows.slice(0, limit),
+    hasMore: typedRows.length > limit,
   };
 }
 
@@ -208,8 +217,7 @@ export async function browseIcons(
     .select()
     .from(collections)
     .where(eq(collections.prefix, prefix))
-    .limit(1)
-    .all();
+    .limit(1);
 
   const parsedCollection: CollectionRow | null = collectionRow
     ? {
@@ -225,8 +233,8 @@ export async function browseIcons(
   }
 
   const conditions = category
-    ? sql`${icons.prefix} = ${prefix} AND ${icons.category} = ${category}`
-    : sql`${icons.prefix} = ${prefix}`;
+    ? and(eq(icons.prefix, prefix), eq(icons.category, category))
+    : eq(icons.prefix, prefix);
 
   const rows = await db
     .select({
@@ -243,8 +251,7 @@ export async function browseIcons(
     .from(icons)
     .where(conditions)
     .limit(limit + 1)
-    .offset(offset)
-    .all();
+    .offset(offset);
 
   return {
     results: rows.slice(0, limit).map((r) => ({
@@ -267,13 +274,46 @@ export async function browseByCategory(
   cacheLife("hours");
   cacheTag(category);
 
-  const licenseFilter = license
-    ? sql` AND json_extract(c.license, '$.title') = ${license}`
-    : sql``;
+  if (license) {
+    // Two-query approach for license filter: first get matching prefixes, then filter icons
+    const licensePrefixes = await db.execute<{ prefix: string; name: string }>(sql`
+      SELECT prefix, name FROM collections WHERE (license::jsonb)->>'title' = ${license}
+    `);
+    const prefixList = (licensePrefixes as { prefix: string; name: string }[]).map(r => r.prefix);
+    if (prefixList.length === 0) {
+      return { results: [], hasMore: false };
+    }
+    const prefixNameMap = new Map((licensePrefixes as { prefix: string; name: string }[]).map(r => [r.prefix, r.name]));
 
-  const rows = await db.all<WebSearchResult>(sql`
+    const rows = await db.execute<Omit<WebSearchResult, "collection">>(sql`
+      SELECT
+        i.full_name AS "fullName",
+        i.name,
+        i.prefix,
+        i.body,
+        COALESCE(i.width, 24) AS width,
+        COALESCE(i.height, 24) AS height,
+        i.category,
+        i.tags
+      FROM icons i
+      WHERE i.category = ${category} AND i.prefix = ANY(${prefixList})
+      ORDER BY i.prefix ASC, i.name ASC
+      LIMIT ${limit + 1} OFFSET ${offset}
+    `);
+    const typedRows = (rows as (Omit<WebSearchResult, "collection">)[]).map(r => ({
+      ...r,
+      collection: prefixNameMap.get(r.prefix) || r.prefix,
+    }));
+    return {
+      results: typedRows.slice(0, limit),
+      hasMore: typedRows.length > limit,
+    };
+  }
+
+  // No license filter: use composite index icons_category_prefix_name_idx for sorted scan
+  const rows = await db.execute<WebSearchResult>(sql`
     SELECT
-      i.full_name AS fullName,
+      i.full_name AS "fullName",
       i.name,
       i.prefix,
       c.name AS collection,
@@ -284,14 +324,15 @@ export async function browseByCategory(
       i.tags
     FROM icons i
     JOIN collections c ON c.prefix = i.prefix
-    WHERE i.category = ${category} ${licenseFilter}
-    ORDER BY i.prefix, i.name
+    WHERE i.category = ${category}
+    ORDER BY i.prefix ASC, i.name ASC
     LIMIT ${limit + 1} OFFSET ${offset}
   `);
 
+  const typedRows = rows as WebSearchResult[];
   return {
-    results: rows.slice(0, limit),
-    hasMore: rows.length > limit,
+    results: typedRows.slice(0, limit),
+    hasMore: typedRows.length > limit,
   };
 }
 
@@ -303,27 +344,61 @@ export async function browseAllIcons(
   "use cache";
   cacheLife("hours");
 
-  const licenseFilter = license
-    ? sql` WHERE json_extract(c.license, '$.title') = ${license}`
-    : sql``;
+  if (license) {
+    // Optimized two-query approach: first get matching prefixes from collections (small table),
+    // then use ANY(array) on icons which leverages icons_prefix_name_idx for sorted index scan.
+    // This avoids scanning 100k+ rows and sorting -- PG produces sorted results directly from the index.
+    const licensePrefixes = await db.execute<{ prefix: string; name: string }>(sql`
+      SELECT prefix, name FROM collections WHERE (license::jsonb)->>'title' = ${license}
+    `);
+    const prefixList = (licensePrefixes as { prefix: string; name: string }[]).map(r => r.prefix);
+    if (prefixList.length === 0) {
+      return { results: [], hasMore: false };
+    }
+    const prefixNameMap = new Map((licensePrefixes as { prefix: string; name: string }[]).map(r => [r.prefix, r.name]));
 
-  const rows = await db.all<WebSearchResult>(sql`
-    SELECT
-      i.full_name AS fullName,
-      i.name,
-      i.prefix,
-      c.name AS collection,
-      i.body,
-      COALESCE(i.width, 24) AS width,
-      COALESCE(i.height, 24) AS height,
-      i.category,
-      i.tags
-    FROM icons i
-    JOIN collections c ON c.prefix = i.prefix
-    ${licenseFilter}
-    ORDER BY i.prefix, i.name
-    LIMIT ${limit + 1} OFFSET ${offset}
-  `);
+    const rows = await db.execute<Omit<WebSearchResult, "collection">>(sql`
+      SELECT
+        i.full_name AS "fullName",
+        i.name,
+        i.prefix,
+        i.body,
+        COALESCE(i.width, 24) AS width,
+        COALESCE(i.height, 24) AS height,
+        i.category,
+        i.tags
+      FROM icons i
+      WHERE i.prefix = ANY(${prefixList})
+      ORDER BY i.prefix ASC, i.name ASC
+      LIMIT ${limit + 1} OFFSET ${offset}
+    `);
+    const typedRows = (rows as (Omit<WebSearchResult, "collection">)[]).map(r => ({
+      ...r,
+      collection: prefixNameMap.get(r.prefix) || r.prefix,
+    }));
+    return {
+      results: typedRows.slice(0, limit),
+      hasMore: typedRows.length > limit,
+    };
+  }
+
+  const rows = await db
+    .select({
+      fullName: icons.fullName,
+      name: icons.name,
+      prefix: icons.prefix,
+      collection: collections.name,
+      body: icons.body,
+      width: sql<number>`COALESCE(${icons.width}, 24)`,
+      height: sql<number>`COALESCE(${icons.height}, 24)`,
+      category: icons.category,
+      tags: icons.tags,
+    })
+    .from(icons)
+    .innerJoin(collections, eq(collections.prefix, icons.prefix))
+    .orderBy(asc(icons.prefix), asc(icons.name))
+    .limit(limit + 1)
+    .offset(offset);
 
   return {
     results: rows.slice(0, limit),
@@ -363,8 +438,7 @@ export async function getIconByFullName(
     })
     .from(icons)
     .where(eq(icons.fullName, fullName))
-    .limit(1)
-    .all();
+    .limit(1);
 
   if (!row) return null;
 

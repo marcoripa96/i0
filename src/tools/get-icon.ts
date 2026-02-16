@@ -46,7 +46,7 @@ async function resolveIcon(
     return { fullName, error: `Invalid format "${fullName}". Expected "prefix:name" (e.g. "mdi:home").` };
   }
 
-  const row = await db
+  const [row] = await db
     .select({
       body: icons.body,
       width: icons.width,
@@ -58,7 +58,7 @@ async function resolveIcon(
     .from(icons)
     .innerJoin(collections, eq(icons.prefix, collections.prefix))
     .where(eq(icons.fullName, fullName))
-    .get();
+    .limit(1);
 
   if (!row) {
     return { fullName, error: `Icon "${fullName}" not found. Use search-icons to find valid names.` };

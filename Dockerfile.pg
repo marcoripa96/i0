@@ -1,0 +1,7 @@
+FROM pgvector/pgvector:pg18
+RUN apt-get update && apt-get install -y build-essential git postgresql-server-dev-18 && \
+    cd /tmp && git clone https://github.com/timescale/pg_textsearch && \
+    cd pg_textsearch && make && make install && \
+    rm -rf /tmp/pg_textsearch && \
+    apt-get purge -y build-essential git postgresql-server-dev-18 && \
+    apt-get autoremove -y && rm -rf /var/lib/apt/lists/*

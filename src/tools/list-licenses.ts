@@ -25,21 +25,21 @@ type LicenseRow = {
 };
 
 export default async function listLicenses() {
-  const rows = await db.all<LicenseRow>(sql`
+  const rows = await db.execute<LicenseRow>(sql`
     SELECT
-      json_extract(c.license, '$.title') AS title,
-      json_extract(c.license, '$.spdx') AS spdx,
+      (c.license::jsonb)->>'title' AS title,
+      (c.license::jsonb)->>'spdx' AS spdx,
       COUNT(*) AS collections,
-      SUM(c.total) AS totalIcons
+      SUM(c.total) AS "totalIcons"
     FROM collections c
     WHERE c.license IS NOT NULL
-    GROUP BY json_extract(c.license, '$.title')
-    ORDER BY totalIcons DESC
+    GROUP BY (c.license::jsonb)->>'title', (c.license::jsonb)->>'spdx'
+    ORDER BY "totalIcons" DESC
   `);
 
   const data = {
-    total: rows.length,
-    licenses: rows,
+    total: (rows as LicenseRow[]).length,
+    licenses: rows as LicenseRow[],
   };
 
   return {
