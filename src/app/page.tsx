@@ -72,10 +72,12 @@ async function SearchResults({
   scope?: string;
 }) {
   const includeCollections = scope !== "icons" && !collection;
+  const t0 = performance.now();
   const [data, matchingCollections] = await Promise.all([
     searchIconsWeb(q, collection, category, 60, 0, license),
     includeCollections ? searchCollections(q) : Promise.resolve([]),
   ]);
+  const durationMs = Math.round(performance.now() - t0);
 
   const results = data.results.map((r) => ({
     fullName: r.fullName,
@@ -104,6 +106,7 @@ async function SearchResults({
           {data.hasMore ? "+" : ""} icons for &quot;{q}&quot;
           {collection ? ` in ${collection}` : ""}
           {category ? ` [${category}]` : ""}
+          <span className="text-muted-foreground/40"> · {durationMs}ms</span>
         </p>
         <IconGrid
           key={`search-${q}-${collection ?? ""}-${category ?? ""}-${license ?? ""}`}
@@ -128,7 +131,9 @@ async function BrowseCollection({
   category?: string;
   license?: string;
 }) {
+  const t0 = performance.now();
   const data = await browseIcons(collection, category, 60, 0, license);
+  const durationMs = Math.round(performance.now() - t0);
   const results = data.results.map((r) => ({
     fullName: r.fullName,
     name: r.name,
@@ -155,6 +160,9 @@ async function BrowseCollection({
             [{category}]
           </span>
         )}
+        <span className="font-mono text-[10px] text-muted-foreground/40 tabular-nums">
+          {durationMs}ms
+        </span>
         {data.collection?.license && (
           <LicenseBadge className="ml-auto"
             license={data.collection.license}
@@ -175,7 +183,9 @@ async function BrowseCollection({
 }
 
 async function BrowseCategoryView({ category, license }: { category: string; license?: string }) {
+  const t0 = performance.now();
   const data = await browseByCategory(category, 60, 0, license);
+  const durationMs = Math.round(performance.now() - t0);
   const results = data.results.map((r) => ({
     fullName: r.fullName,
     name: r.name,
@@ -191,6 +201,7 @@ async function BrowseCategoryView({ category, license }: { category: string; lic
       <p className="font-mono text-xs text-muted-foreground">
         {data.results.length}
         {data.hasMore ? "+" : ""} icons in [{category}]
+        <span className="text-muted-foreground/40"> · {durationMs}ms</span>
       </p>
       <IconGrid
         key={`category-${category}-${license ?? ""}`}
@@ -205,16 +216,19 @@ async function BrowseCategoryView({ category, license }: { category: string; lic
 
 
 async function CollectionsView({ license }: { license?: string }) {
+  const t0 = performance.now();
   const allCollections = await getCollections();
   const filtered = license
     ? allCollections.filter((c) => c.license?.title === license)
     : allCollections;
+  const durationMs = Math.round(performance.now() - t0);
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-baseline justify-between">
         <p className="font-mono text-xs text-muted-foreground">
           {filtered.length} collections
+          <span className="text-muted-foreground/40"> · {durationMs}ms</span>
         </p>
       </div>
       <CollectionsGrid collections={filtered} />
@@ -223,7 +237,9 @@ async function CollectionsView({ license }: { license?: string }) {
 }
 
 async function BrowseAllIconsView({ license }: { license?: string }) {
+  const t0 = performance.now();
   const data = await browseAllIcons(60, 0, license);
+  const durationMs = Math.round(performance.now() - t0);
   const results = data.results.map((r) => ({
     fullName: r.fullName,
     name: r.name,
@@ -236,6 +252,9 @@ async function BrowseAllIconsView({ license }: { license?: string }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <p className="font-mono text-xs text-muted-foreground/40">
+        {durationMs}ms
+      </p>
       <IconGrid
         key={`browse-all-${license ?? ""}`}
         initialResults={results}

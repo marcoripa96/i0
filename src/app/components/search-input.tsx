@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSearchTransition } from "./search-transition";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { Kbd } from "@/components/ui/kbd";
 
 type Collection = {
   prefix: string;
@@ -41,17 +42,34 @@ export function SearchInput({
   const collection = searchParams.get("collection") ?? "";
   const category = searchParams.get("category") ?? "";
   const license = searchParams.get("license") ?? "";
-  const scope = searchParams.get("scope") === "icons" ? "icons" : "all";
+  const rawScope = searchParams.get("scope") === "icons" ? "icons" : "all";
+  const scope = collection ? "icons" : rawScope;
+  const hasFilters = query || collection || category || license || scope === "icons";
+
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [licenseOpen, setLicenseOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const handleReset = useCallback(() => {
+    setQuery("");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    startTransition(() => {
+      router.replace("/", { scroll: false });
+    });
+    inputRef.current?.focus();
+  }, [router, startTransition]);
+
   useEffect(() => {
     inputRef.current?.focus();
 
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        handleReset();
+        return;
+      }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
@@ -61,7 +79,7 @@ export function SearchInput({
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [handleReset]);
 
   function updateUrl(q: string, col: string, cat: string, lic: string, sc: string = scope) {
     const params = new URLSearchParams();
@@ -128,10 +146,13 @@ export function SearchInput({
           <div className="flex h-10 items-center rounded-md border border-input bg-background p-1">
             <button
               onClick={() => handleScopeChange("all")}
-              className={`h-full px-2.5 rounded-sm font-mono text-[11px] transition-colors cursor-pointer ${
-                scope === "all"
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:text-foreground"
+              disabled={!!collection}
+              className={`h-full px-2.5 rounded-sm font-mono text-[11px] transition-colors ${
+                collection
+                  ? "text-muted-foreground/40 cursor-not-allowed"
+                  : scope === "all"
+                    ? "bg-foreground text-background cursor-pointer"
+                    : "text-muted-foreground hover:text-foreground cursor-pointer"
               }`}
             >
               all
@@ -298,6 +319,17 @@ export function SearchInput({
           </PopoverContent>
         </Popover>
         </div>
+        {hasFilters && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleReset}
+            className="h-10 gap-1.5 font-mono text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+          >
+            reset
+            <Kbd className="bg-transparent border border-border text-[10px]">esc</Kbd>
+          </Button>
+        )}
       </div>
     </div>
   );
