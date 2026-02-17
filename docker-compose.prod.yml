@@ -20,17 +20,6 @@ services:
     networks:
       - i0_network
 
-  migrate:
-    image: ${REGISTRY}/${REGISTRY_PATH}/migrate:i0-${I0_VERSION:-latest}
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-    restart: "no"
-    networks:
-      - i0_network
-
 volumes:
   i0-pgdata:
     name: ${I0_DB_VOLUME:-i0-pgdata}

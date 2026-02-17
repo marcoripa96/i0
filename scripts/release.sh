@@ -22,17 +22,13 @@ show_usage() {
   echo ""
   echo "Services:"
   echo "  db, postgres    - PostgreSQL 18 with pgvector + pg_textsearch"
-  echo "  migrate         - Drizzle migration runner"
-  echo "  all             - All services (db + migrate)"
   echo ""
   echo "Options:"
   echo "  --dry-run        Show what would be built without executing"
   echo ""
   echo "Examples:"
-  echo "  ./scripts/release.sh all 0.1.0"
   echo "  ./scripts/release.sh db 0.1.0"
-  echo "  ./scripts/release.sh migrate 0.1.0"
-  echo "  ./scripts/release.sh all 0.1.0 --dry-run"
+  echo "  ./scripts/release.sh db 0.1.0 --dry-run"
 }
 
 # Parse flags
@@ -59,30 +55,11 @@ done
 # Restore positional arguments
 set -- "${POSITIONAL_ARGS[@]}"
 
-SKIP_GIT_TAG=false
-
 case "$1" in
   db|postgres)
-    PREFIX="pg"
     SERVICE_NAME="PostgreSQL (pgvector + pg_textsearch)"
-    SKIP_GIT_TAG=true
     declare -A DOCKER_BUILDS=(
       ["pg18-pg_textsearch"]="Dockerfile.pg"
-    )
-    ;;
-  migrate)
-    PREFIX="i0"
-    SERVICE_NAME="Migrate"
-    declare -A DOCKER_BUILDS=(
-      ["migrate"]="Dockerfile.migrate"
-    )
-    ;;
-  all)
-    PREFIX="i0"
-    SERVICE_NAME="All"
-    declare -A DOCKER_BUILDS=(
-      ["pg18-pg_textsearch"]="Dockerfile.pg"
-      ["migrate"]="Dockerfile.migrate"
     )
     ;;
   "")
@@ -112,20 +89,6 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
-TAG="$PREFIX-$VERSION"
-
-# Check if tag already exists
-OVERWRITE_TAG=false
-if [[ "$SKIP_GIT_TAG" = false ]] && git rev-parse "$TAG" >/dev/null 2>&1; then
-  echo -e "${YELLOW}Warning: Tag $TAG already exists${NC}"
-  if gum confirm "Do you want to overwrite it?"; then
-    OVERWRITE_TAG=true
-  else
-    echo -e "${RED}Aborted.${NC}"
-    exit 1
-  fi
-fi
-
 # Function to show dry run information
 show_dry_run() {
   echo ""
@@ -133,12 +96,10 @@ show_dry_run() {
   echo ""
   echo "Service: $SERVICE_NAME"
   echo "Version: $VERSION"
-  echo "Tag: $TAG"
   echo ""
   echo "Images to build:"
   for package in "${!DOCKER_BUILDS[@]}"; do
     dockerfile="${DOCKER_BUILDS[$package]}"
-    # pg image uses pg- prefix, migrate uses i0- prefix
     if [[ "$package" == "pg18-pg_textsearch" ]]; then
       image_tag="pg-$VERSION"
     else
@@ -149,18 +110,6 @@ show_dry_run() {
     echo "    Dockerfile: $dockerfile"
     echo ""
   done
-  if [[ "$SKIP_GIT_TAG" = false ]]; then
-    echo "Git operations:"
-    if [[ "$OVERWRITE_TAG" = true ]]; then
-      echo "  - git tag -f $TAG (overwrite)"
-      echo "  - git push origin $TAG -f -o ci.skip (force)"
-    else
-      echo "  - git tag $TAG"
-      echo "  - git push origin $TAG -o ci.skip"
-    fi
-  else
-    echo "Git operations: (skipped for infrastructure images)"
-  fi
 }
 
 if [[ "$DRY_RUN" = true ]]; then
@@ -202,7 +151,6 @@ build_images() {
   # Start all builds in parallel
   for package in "${packages_arr[@]}"; do
     dockerfile="${DOCKER_BUILDS[$package]}"
-    # pg image uses pg- prefix, migrate uses i0- prefix
     if [[ "$package" == "pg18-pg_textsearch" ]]; then
       image_tag="pg-$VERSION"
     else
@@ -360,7 +308,6 @@ gum style --foreground 212 --bold "icons0 Release"
 echo ""
 echo "Service: $SERVICE_NAME"
 echo "Version: $VERSION"
-echo "Tag: $TAG"
 echo ""
 
 echo "Images to build:"
@@ -381,25 +328,5 @@ fi
 
 build_images
 
-if [[ "$SKIP_GIT_TAG" = false ]]; then
-  echo ""
-  if ! gum confirm "Create and push git tag (with CI skip)?"; then
-    gum style --foreground 226 "Aborted. Images pushed but tag not created."
-    exit 0
-  fi
-
-  echo ""
-  if [[ "$OVERWRITE_TAG" = true ]]; then
-    gum spin --spinner dot --title "Overwriting tag $TAG..." -- git tag -f "$TAG"
-    gum spin --spinner dot --title "Force pushing tag to origin (skipping CI)..." -- git push origin "$TAG" -f -o ci.skip
-  else
-    gum spin --spinner dot --title "Creating tag $TAG..." -- git tag "$TAG"
-    gum spin --spinner dot --title "Pushing tag to origin (skipping CI)..." -- git push origin "$TAG" -o ci.skip
-  fi
-fi
-
 echo ""
-gum style --foreground 82 --bold "✓ Released $SERVICE_NAME $VERSION"
-if [[ "$SKIP_GIT_TAG" = false ]]; then
-  echo "Tag: $TAG"
-fi
+gum style --foreground 82 --bold "✓ Pushed $SERVICE_NAME $VERSION"
