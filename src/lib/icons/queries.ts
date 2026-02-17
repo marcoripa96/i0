@@ -45,6 +45,33 @@ export type WebSearchResult = {
   tags: string | null;
 };
 
+export type CollectionSummary = {
+  prefix: string;
+  name: string;
+  total: number;
+  license: { title: string; spdx?: string; url?: string } | null;
+};
+
+export async function getCollectionSummaries(): Promise<CollectionSummary[]> {
+  "use cache";
+  cacheLife("max");
+
+  const rows = await db
+    .select({
+      prefix: collections.prefix,
+      name: collections.name,
+      total: collections.total,
+      license: collections.license,
+    })
+    .from(collections)
+    .orderBy(collections.prefix);
+
+  return rows.map((r) => ({
+    ...r,
+    license: r.license ? JSON.parse(r.license) : null,
+  }));
+}
+
 export async function getCollections(): Promise<CollectionWithSamples[]> {
   "use cache";
   cacheLife("max");

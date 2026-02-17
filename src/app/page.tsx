@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import {
-  getCollections,
+  getCollectionSummaries,
   getCollectionCount,
   getCollectionsPaginated,
   getCategories,
@@ -38,7 +38,7 @@ async function SearchHeader({
   const category = params.category ?? "";
 
   const [allCollections, categories, categoryPrefixes, licenses] = await Promise.all([
-    getCollections(),
+    getCollectionSummaries(),
     collection ? getCategoriesForCollection(collection) : getCategories(),
     category ? getCollectionPrefixesForCategory(category) : null,
     getLicenses(),
@@ -246,7 +246,7 @@ async function BrowseAllIconsView({ license }: { license?: string }) {
   const t0 = performance.now();
   const [data, allCollections] = await Promise.all([
     browseAllIcons(48, 0, license),
-    getCollections(),
+    getCollectionSummaries(),
   ]);
   const durationMs = Math.round(performance.now() - t0);
   const filtered = license
