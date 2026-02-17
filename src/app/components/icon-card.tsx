@@ -67,22 +67,42 @@ export function IconCard({ icon }: { icon: IconData }) {
     if (isPending) return;
 
     startTransition(async () => {
-      const code = await getIconCode(icon.fullName, format);
+      const codePromise = getIconCode(icon.fullName, format);
+
+      // Use ClipboardItem with a deferred promise so the clipboard write is
+      // registered synchronously during the user gesture. Mobile browsers
+      // (Safari/iOS) expire user activation before async server actions
+      // complete, which causes navigator.clipboard.writeText() to fail.
+      let usedClipboardItem = false;
+      try {
+        const item = new ClipboardItem({
+          "text/plain": codePromise.then((code) => {
+            if (!code) throw new Error("No code");
+            return new Blob([code], { type: "text/plain" });
+          }) as Promise<Blob>,
+        });
+        await navigator.clipboard.write([item]);
+        usedClipboardItem = true;
+      } catch {
+        // ClipboardItem not supported or write failed — fall through
+      }
+
+      const code = await codePromise;
       if (!code) return;
 
-      try {
-        await navigator.clipboard.writeText(code);
-      } catch {
-        // Fallback for mobile browsers where clipboard API may fail
-        // (expired user activation, insecure context, etc.)
-        const textarea = document.createElement("textarea");
-        textarea.value = code;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
+      if (!usedClipboardItem) {
+        try {
+          await navigator.clipboard.writeText(code);
+        } catch {
+          const textarea = document.createElement("textarea");
+          textarea.value = code;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textarea);
+        }
       }
 
       setCopied(true);

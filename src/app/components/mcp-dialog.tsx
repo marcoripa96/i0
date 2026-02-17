@@ -110,7 +110,18 @@ export function McpDialog({ token }: { token?: string }) {
   const config = harness.getConfig(mcpUrl, token || TOKEN_PLACEHOLDER);
 
   async function handleCopy() {
-    await navigator.clipboard.writeText(config);
+    try {
+      await navigator.clipboard.writeText(config);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = config;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
