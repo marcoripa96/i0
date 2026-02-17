@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { IconCard } from "./icon-card";
@@ -71,8 +71,13 @@ export function IconGrid({
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const { startTransition: startSearchTransition } = useSearchTransition();
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const loadingRef = useRef(false);
 
-  async function loadMore() {
+  const loadMore = useCallback(() => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+
     const offset = results.length;
     const params = new URLSearchParams();
     if (query) params.set("q", query);
@@ -86,8 +91,25 @@ export function IconGrid({
       const data = await res.json();
       setResults((prev) => [...prev, ...data.results]);
       setHasMore(data.hasMore);
+      loadingRef.current = false;
     });
-  }
+  }, [results.length, query, collection, category, license, startTransition]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore]);
 
   if (results.length === 0) {
     return (
@@ -121,16 +143,10 @@ export function IconGrid({
       </div>
 
       {hasMore && (
-        <div className="flex justify-center pb-8 pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={loadMore}
-            disabled={isPending}
-            className="font-mono text-xs"
-          >
-            {isPending ? "loading..." : "[load more]"}
-          </Button>
+        <div ref={sentinelRef} className="flex justify-center pb-8 pt-2">
+          <p className="font-mono text-xs text-muted-foreground animate-pulse">
+            loading...
+          </p>
         </div>
       )}
     </div>

@@ -17,8 +17,17 @@ export type CollectionRow = {
   samples: string[] | null;
 };
 
+export type SampleIcon = { name: string; body: string; width: number; height: number };
+
 export type CollectionWithSamples = CollectionRow & {
-  sampleIcons: { name: string; body: string; width: number; height: number }[];
+  sampleIcons: SampleIcon[];
+};
+
+export type CollectionPageRow = {
+  prefix: string;
+  name: string;
+  total: number;
+  samples: string[] | null;
 };
 
 export type IconRow = {
@@ -44,6 +53,33 @@ export type WebSearchResult = {
   category: string | null;
   tags: string | null;
 };
+
+export type CollectionSummary = {
+  prefix: string;
+  name: string;
+  total: number;
+  license: { title: string; spdx?: string; url?: string } | null;
+};
+
+export async function getCollectionSummaries(): Promise<CollectionSummary[]> {
+  "use cache";
+  cacheLife("max");
+
+  const rows = await db
+    .select({
+      prefix: collections.prefix,
+      name: collections.name,
+      total: collections.total,
+      license: collections.license,
+    })
+    .from(collections)
+    .orderBy(collections.prefix);
+
+  return rows.map((r) => ({
+    ...r,
+    license: r.license ? JSON.parse(r.license) : null,
+  }));
+}
 
 export async function getCollections(): Promise<CollectionWithSamples[]> {
   "use cache";
@@ -101,6 +137,207 @@ export async function getCollections(): Promise<CollectionWithSamples[]> {
         height: i.height ?? 24,
       })),
   }));
+}
+
+export async function getCollectionCount(
+  license?: string,
+): Promise<number> {
+  "use cache";
+  cacheLife("max");
+
+  if (license) {
+    const rows = await db.execute<{ count: string }>(sql`
+      SELECT count(*)::text AS count FROM collections
+      WHERE (license::jsonb)->>'title' = ${license}
+    `);
+    return parseInt((rows as { count: string }[])[0].count, 10);
+  }
+
+  const rows = await db.execute<{ count: string }>(sql`
+    SELECT count(*)::text AS count FROM collections
+  `);
+  return parseInt((rows as { count: string }[])[0].count, 10);
+}
+
+export async function getCollectionsPage(
+  limit = 48,
+  offset = 0,
+  license?: string,
+): Promise<{ results: CollectionPageRow[]; hasMore: boolean }> {
+  "use cache";
+  cacheLife("max");
+
+  const licenseFilter = license
+    ? sql` WHERE (license::jsonb)->>'title' = ${license}`
+    : sql``;
+
+  const rows = await db.execute<{
+    prefix: string;
+    name: string;
+    total: number;
+    samples: string | null;
+  }>(sql`
+    SELECT prefix, name, total, samples FROM collections ${licenseFilter}
+    ORDER BY prefix ASC
+    LIMIT ${limit + 1} OFFSET ${offset}
+  `);
+
+  const typedRows = rows as {
+    prefix: string;
+    name: string;
+    total: number;
+    samples: string | null;
+  }[];
+
+  return {
+    results: typedRows.slice(0, limit).map((r) => ({
+      ...r,
+      samples: r.samples ? JSON.parse(r.samples) : null,
+    })),
+    hasMore: typedRows.length > limit,
+  };
+}
+
+export async function getSampleIconsBatch(
+  collections: CollectionPageRow[],
+): Promise<Record<string, SampleIcon[]>> {
+  "use cache";
+  cacheLife("max");
+
+  const sampleFullNames: string[] = [];
+  for (const c of collections) {
+    if (c.samples) {
+      for (const s of c.samples.slice(0, 3)) {
+        sampleFullNames.push(`${c.prefix}:${s}`);
+      }
+    }
+  }
+
+  if (sampleFullNames.length === 0) return {};
+
+  const sampleIcons = await db
+    .select({
+      fullName: icons.fullName,
+      name: icons.name,
+      body: icons.body,
+      width: icons.width,
+      height: icons.height,
+    })
+    .from(icons)
+    .where(inArray(icons.fullName, sampleFullNames));
+
+  const sampleMap = new Map(sampleIcons.map((i) => [i.fullName, i]));
+
+  const result: Record<string, SampleIcon[]> = {};
+  for (const c of collections) {
+    result[c.prefix] = (c.samples || [])
+      .slice(0, 3)
+      .map((s) => sampleMap.get(`${c.prefix}:${s}`))
+      .filter((i): i is (typeof sampleIcons)[number] => i != null)
+      .map((i) => ({
+        name: i.name,
+        body: i.body,
+        width: i.width ?? 24,
+        height: i.height ?? 24,
+      }));
+  }
+  return result;
+}
+
+export async function getCollectionsPaginated(
+  limit = 48,
+  offset = 0,
+  license?: string,
+): Promise<{ results: CollectionWithSamples[]; hasMore: boolean }> {
+  "use cache";
+  cacheLife("max");
+
+  const licenseFilter = license
+    ? sql` WHERE (license::jsonb)->>'title' = ${license}`
+    : sql``;
+
+  const rows = await db.execute<{
+    prefix: string;
+    name: string;
+    total: number;
+    author: string | null;
+    license: string | null;
+    category: string | null;
+    palette: boolean | null;
+    height: number | null;
+    version: string | null;
+    samples: string | null;
+  }>(sql`
+    SELECT * FROM collections ${licenseFilter}
+    ORDER BY prefix ASC
+    LIMIT ${limit + 1} OFFSET ${offset}
+  `);
+
+  const typedRows = rows as {
+    prefix: string;
+    name: string;
+    total: number;
+    author: string | null;
+    license: string | null;
+    category: string | null;
+    palette: boolean | null;
+    height: number | null;
+    version: string | null;
+    samples: string | null;
+  }[];
+
+  const parsed: CollectionRow[] = typedRows.slice(0, limit).map((r) => ({
+    ...r,
+    author: r.author ? JSON.parse(r.author) : null,
+    license: r.license ? JSON.parse(r.license) : null,
+    samples: r.samples ? JSON.parse(r.samples) : null,
+  }));
+
+  // Only fetch sample icons for this page of collections
+  const sampleFullNames: string[] = [];
+  for (const c of parsed) {
+    if (c.samples) {
+      for (const s of c.samples.slice(0, 3)) {
+        sampleFullNames.push(`${c.prefix}:${s}`);
+      }
+    }
+  }
+
+  const sampleIcons =
+    sampleFullNames.length > 0
+      ? await db
+          .select({
+            fullName: icons.fullName,
+            name: icons.name,
+            body: icons.body,
+            width: icons.width,
+            height: icons.height,
+          })
+          .from(icons)
+          .where(inArray(icons.fullName, sampleFullNames))
+      : [];
+
+  const sampleMap = new Map(sampleIcons.map((i) => [i.fullName, i]));
+
+  return {
+    results: parsed.map((c) => ({
+      ...c,
+      sampleIcons: (c.samples || [])
+        .slice(0, 3)
+        .map((s) => sampleMap.get(`${c.prefix}:${s}`))
+        .filter(
+          (i): i is { fullName: string; name: string; body: string; width: number; height: number } =>
+            i != null
+        )
+        .map((i) => ({
+          name: i.name,
+          body: i.body,
+          width: i.width ?? 24,
+          height: i.height ?? 24,
+        })),
+    })),
+    hasMore: typedRows.length > limit,
+  };
 }
 
 export async function getCategories(): Promise<string[]> {

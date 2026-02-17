@@ -1,6 +1,9 @@
 import { Suspense } from "react";
 import {
-  getCollections,
+  getCollectionSummaries,
+  getCollectionCount,
+  getCollectionsPage,
+  getSampleIconsBatch,
   getCategories,
   getCategoriesForCollection,
   getCollectionPrefixesForCategory,
@@ -12,10 +15,10 @@ import {
   browseAllIcons,
 } from "@/lib/icons/queries";
 import { ThemeToggle } from "./components/theme-toggle";
-import { SearchInput } from "./components/search-input";
+import { SearchInput, FiltersHydrator } from "./components/search-input";
 import { StickySearch } from "./components/sticky-search";
 import { IconGrid } from "./components/icon-grid";
-import { CollectionsGrid } from "./components/collections-grid";
+import { CollectionsGrid, SampleIconsHydrator } from "./components/collections-grid";
 import { LicenseBadge } from "./components/license-badge";
 import { InstallCommand } from "./components/install-command";
 import { LazySignature } from "./components/lazy-signature";
@@ -26,7 +29,7 @@ import {
 } from "./components/search-transition";
 import { TransitionOverlay } from "./components/transition-overlay";
 
-async function SearchHeader({
+async function FiltersFetcher({
   searchParams,
 }: {
   searchParams: Promise<{ q?: string; collection?: string; category?: string; license?: string; scope?: string }>;
@@ -36,7 +39,7 @@ async function SearchHeader({
   const category = params.category ?? "";
 
   const [allCollections, categories, categoryPrefixes, licenses] = await Promise.all([
-    getCollections(),
+    getCollectionSummaries(),
     collection ? getCategoriesForCollection(collection) : getCategories(),
     category ? getCollectionPrefixesForCategory(category) : null,
     getLicenses(),
@@ -52,9 +55,11 @@ async function SearchHeader({
     }));
 
   return (
-    <StickySearch>
-      <SearchInput collections={collectionsForFilter} categories={categories} licenses={licenses} />
-    </StickySearch>
+    <FiltersHydrator
+      collections={collectionsForFilter}
+      categories={categories}
+      licenses={licenses}
+    />
   );
 }
 
@@ -74,7 +79,7 @@ async function SearchResults({
   const includeCollections = scope !== "icons" && !collection;
   const t0 = performance.now();
   const [data, matchingCollections] = await Promise.all([
-    searchIconsWeb(q, collection, category, 60, 0, license),
+    searchIconsWeb(q, collection, category, 48, 0, license),
     includeCollections ? searchCollections(q) : Promise.resolve([]),
   ]);
   const durationMs = Math.round(performance.now() - t0);
@@ -132,7 +137,7 @@ async function BrowseCollection({
   license?: string;
 }) {
   const t0 = performance.now();
-  const data = await browseIcons(collection, category, 60, 0, license);
+  const data = await browseIcons(collection, category, 48, 0, license);
   const durationMs = Math.round(performance.now() - t0);
   const results = data.results.map((r) => ({
     fullName: r.fullName,
@@ -184,7 +189,7 @@ async function BrowseCollection({
 
 async function BrowseCategoryView({ category, license }: { category: string; license?: string }) {
   const t0 = performance.now();
-  const data = await browseByCategory(category, 60, 0, license);
+  const data = await browseByCategory(category, 48, 0, license);
   const durationMs = Math.round(performance.now() - t0);
   const results = data.results.map((r) => ({
     fullName: r.fullName,
@@ -214,24 +219,40 @@ async function BrowseCategoryView({ category, license }: { category: string; lic
   );
 }
 
+async function CollectionSamplesFetcher({
+  collections,
+}: {
+  collections: { prefix: string; name: string; total: number; samples: string[] | null }[];
+}) {
+  const sampleIcons = await getSampleIconsBatch(collections);
+  return <SampleIconsHydrator data={sampleIcons} />;
+}
 
 async function CollectionsView({ license }: { license?: string }) {
   const t0 = performance.now();
-  const allCollections = await getCollections();
-  const filtered = license
-    ? allCollections.filter((c) => c.license?.title === license)
-    : allCollections;
+  const [totalCount, page] = await Promise.all([
+    getCollectionCount(license),
+    getCollectionsPage(48, 0, license),
+  ]);
   const durationMs = Math.round(performance.now() - t0);
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-baseline justify-between">
         <p className="font-mono text-xs text-muted-foreground">
-          {filtered.length} collections
+          {totalCount} collections
           <span className="text-muted-foreground/40"> · {durationMs}ms</span>
         </p>
       </div>
-      <CollectionsGrid collections={filtered} />
+      <CollectionsGrid
+        collections={page.results}
+        initialHasMore={page.hasMore}
+        license={license}
+      >
+        <Suspense fallback={null}>
+          <CollectionSamplesFetcher collections={page.results} />
+        </Suspense>
+      </CollectionsGrid>
     </div>
   );
 }
@@ -239,8 +260,8 @@ async function CollectionsView({ license }: { license?: string }) {
 async function BrowseAllIconsView({ license }: { license?: string }) {
   const t0 = performance.now();
   const [data, allCollections] = await Promise.all([
-    browseAllIcons(60, 0, license),
-    getCollections(),
+    browseAllIcons(48, 0, license),
+    getCollectionSummaries(),
   ]);
   const durationMs = Math.round(performance.now() - t0);
   const filtered = license
@@ -371,15 +392,13 @@ export default function Home({
       </header>
 
       <SearchTransitionProvider>
-        <Suspense
-          fallback={
-            <StickySearch>
-              <SearchInput collections={[]} categories={[]} licenses={[]} />
-            </StickySearch>
-          }
-        >
-          <SearchHeader searchParams={searchParams} />
-        </Suspense>
+        <StickySearch>
+          <SearchInput>
+            <Suspense fallback={null}>
+              <FiltersFetcher searchParams={searchParams} />
+            </Suspense>
+          </SearchInput>
+        </StickySearch>
 
         <main className="mt-10 flex-1">
           <TransitionOverlay>
