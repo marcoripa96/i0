@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import {
   getCollections,
+  getCollectionCount,
   getCollectionsPaginated,
   getCategories,
   getCategoriesForCollection,
@@ -218,14 +219,11 @@ async function BrowseCategoryView({ category, license }: { category: string; lic
 
 async function CollectionsView({ license }: { license?: string }) {
   const t0 = performance.now();
-  const [allCollections, paginatedData] = await Promise.all([
-    getCollections(),
+  const [totalCount, paginatedData] = await Promise.all([
+    getCollectionCount(license),
     getCollectionsPaginated(48, 0, license),
   ]);
   const durationMs = Math.round(performance.now() - t0);
-  const totalCount = license
-    ? allCollections.filter((c) => c.license?.title === license).length
-    : allCollections.length;
 
   return (
     <div className="flex flex-col gap-6">
