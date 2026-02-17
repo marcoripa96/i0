@@ -75,7 +75,7 @@ async function SearchResults({
   const includeCollections = scope !== "icons" && !collection;
   const t0 = performance.now();
   const [data, matchingCollections] = await Promise.all([
-    searchIconsWeb(q, collection, category, 60, 0, license),
+    searchIconsWeb(q, collection, category, 48, 0, license),
     includeCollections ? searchCollections(q) : Promise.resolve([]),
   ]);
   const durationMs = Math.round(performance.now() - t0);
@@ -133,7 +133,7 @@ async function BrowseCollection({
   license?: string;
 }) {
   const t0 = performance.now();
-  const data = await browseIcons(collection, category, 60, 0, license);
+  const data = await browseIcons(collection, category, 48, 0, license);
   const durationMs = Math.round(performance.now() - t0);
   const results = data.results.map((r) => ({
     fullName: r.fullName,
@@ -185,7 +185,7 @@ async function BrowseCollection({
 
 async function BrowseCategoryView({ category, license }: { category: string; license?: string }) {
   const t0 = performance.now();
-  const data = await browseByCategory(category, 60, 0, license);
+  const data = await browseByCategory(category, 48, 0, license);
   const durationMs = Math.round(performance.now() - t0);
   const results = data.results.map((r) => ({
     fullName: r.fullName,
@@ -220,7 +220,7 @@ async function CollectionsView({ license }: { license?: string }) {
   const t0 = performance.now();
   const [allCollections, paginatedData] = await Promise.all([
     getCollections(),
-    getCollectionsPaginated(24, 0, license),
+    getCollectionsPaginated(48, 0, license),
   ]);
   const durationMs = Math.round(performance.now() - t0);
   const totalCount = license
@@ -247,7 +247,7 @@ async function CollectionsView({ license }: { license?: string }) {
 async function BrowseAllIconsView({ license }: { license?: string }) {
   const t0 = performance.now();
   const [data, allCollections] = await Promise.all([
-    browseAllIcons(60, 0, license),
+    browseAllIcons(48, 0, license),
     getCollections(),
   ]);
   const durationMs = Math.round(performance.now() - t0);

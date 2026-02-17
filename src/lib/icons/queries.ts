@@ -104,7 +104,7 @@ export async function getCollections(): Promise<CollectionWithSamples[]> {
 }
 
 export async function getCollectionsPaginated(
-  limit = 24,
+  limit = 48,
   offset = 0,
   license?: string,
 ): Promise<{ results: CollectionWithSamples[]; hasMore: boolean }> {

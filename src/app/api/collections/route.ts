@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl;
     const license = searchParams.get("license") ?? "";
     const offset = parseInt(searchParams.get("offset") ?? "0", 10);
-    const limit = 24;
+    const limit = 48;
 
     if (isNaN(offset) || offset < 0) {
       return NextResponse.json(
