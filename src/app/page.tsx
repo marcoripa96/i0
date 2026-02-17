@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import {
   getCollections,
+  getCollectionsPaginated,
   getCategories,
   getCategoriesForCollection,
   getCollectionPrefixesForCategory,
@@ -217,21 +218,28 @@ async function BrowseCategoryView({ category, license }: { category: string; lic
 
 async function CollectionsView({ license }: { license?: string }) {
   const t0 = performance.now();
-  const allCollections = await getCollections();
-  const filtered = license
-    ? allCollections.filter((c) => c.license?.title === license)
-    : allCollections;
+  const [allCollections, paginatedData] = await Promise.all([
+    getCollections(),
+    getCollectionsPaginated(24, 0, license),
+  ]);
   const durationMs = Math.round(performance.now() - t0);
+  const totalCount = license
+    ? allCollections.filter((c) => c.license?.title === license).length
+    : allCollections.length;
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-baseline justify-between">
         <p className="font-mono text-xs text-muted-foreground">
-          {filtered.length} collections
+          {totalCount} collections
           <span className="text-muted-foreground/40"> · {durationMs}ms</span>
         </p>
       </div>
-      <CollectionsGrid collections={filtered} />
+      <CollectionsGrid
+        collections={paginatedData.results}
+        initialHasMore={paginatedData.hasMore}
+        license={license}
+      />
     </div>
   );
 }

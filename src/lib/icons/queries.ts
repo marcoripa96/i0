@@ -103,6 +103,26 @@ export async function getCollections(): Promise<CollectionWithSamples[]> {
   }));
 }
 
+export async function getCollectionsPaginated(
+  limit = 24,
+  offset = 0,
+  license?: string,
+): Promise<{ results: CollectionWithSamples[]; hasMore: boolean }> {
+  "use cache";
+  cacheLife("max");
+
+  const allCollections = await getCollections();
+  const filtered = license
+    ? allCollections.filter((c) => c.license?.title === license)
+    : allCollections;
+
+  const sliced = filtered.slice(offset, offset + limit + 1);
+  return {
+    results: sliced.slice(0, limit),
+    hasMore: sliced.length > limit,
+  };
+}
+
 export async function getCategories(): Promise<string[]> {
   "use cache";
   cacheLife("max");
