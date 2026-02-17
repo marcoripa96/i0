@@ -2,7 +2,8 @@ import { Suspense } from "react";
 import {
   getCollectionSummaries,
   getCollectionCount,
-  getCollectionsPaginated,
+  getCollectionsPage,
+  getSampleIconsBatch,
   getCategories,
   getCategoriesForCollection,
   getCollectionPrefixesForCategory,
@@ -14,10 +15,10 @@ import {
   browseAllIcons,
 } from "@/lib/icons/queries";
 import { ThemeToggle } from "./components/theme-toggle";
-import { SearchInput } from "./components/search-input";
+import { SearchInput, FiltersHydrator } from "./components/search-input";
 import { StickySearch } from "./components/sticky-search";
 import { IconGrid } from "./components/icon-grid";
-import { CollectionsGrid } from "./components/collections-grid";
+import { CollectionsGrid, SampleIconsHydrator } from "./components/collections-grid";
 import { LicenseBadge } from "./components/license-badge";
 import { InstallCommand } from "./components/install-command";
 import { LazySignature } from "./components/lazy-signature";
@@ -28,7 +29,7 @@ import {
 } from "./components/search-transition";
 import { TransitionOverlay } from "./components/transition-overlay";
 
-async function SearchHeader({
+async function FiltersFetcher({
   searchParams,
 }: {
   searchParams: Promise<{ q?: string; collection?: string; category?: string; license?: string; scope?: string }>;
@@ -54,9 +55,11 @@ async function SearchHeader({
     }));
 
   return (
-    <StickySearch>
-      <SearchInput collections={collectionsForFilter} categories={categories} licenses={licenses} />
-    </StickySearch>
+    <FiltersHydrator
+      collections={collectionsForFilter}
+      categories={categories}
+      licenses={licenses}
+    />
   );
 }
 
@@ -216,12 +219,20 @@ async function BrowseCategoryView({ category, license }: { category: string; lic
   );
 }
 
+async function CollectionSamplesFetcher({
+  collections,
+}: {
+  collections: { prefix: string; name: string; total: number; samples: string[] | null }[];
+}) {
+  const sampleIcons = await getSampleIconsBatch(collections);
+  return <SampleIconsHydrator data={sampleIcons} />;
+}
 
 async function CollectionsView({ license }: { license?: string }) {
   const t0 = performance.now();
-  const [totalCount, paginatedData] = await Promise.all([
+  const [totalCount, page] = await Promise.all([
     getCollectionCount(license),
-    getCollectionsPaginated(48, 0, license),
+    getCollectionsPage(48, 0, license),
   ]);
   const durationMs = Math.round(performance.now() - t0);
 
@@ -234,10 +245,14 @@ async function CollectionsView({ license }: { license?: string }) {
         </p>
       </div>
       <CollectionsGrid
-        collections={paginatedData.results}
-        initialHasMore={paginatedData.hasMore}
+        collections={page.results}
+        initialHasMore={page.hasMore}
         license={license}
-      />
+      >
+        <Suspense fallback={null}>
+          <CollectionSamplesFetcher collections={page.results} />
+        </Suspense>
+      </CollectionsGrid>
     </div>
   );
 }
@@ -377,15 +392,13 @@ export default function Home({
       </header>
 
       <SearchTransitionProvider>
-        <Suspense
-          fallback={
-            <StickySearch>
-              <SearchInput collections={[]} categories={[]} licenses={[]} />
-            </StickySearch>
-          }
-        >
-          <SearchHeader searchParams={searchParams} />
-        </Suspense>
+        <StickySearch>
+          <SearchInput>
+            <Suspense fallback={null}>
+              <FiltersFetcher searchParams={searchParams} />
+            </Suspense>
+          </SearchInput>
+        </StickySearch>
 
         <main className="mt-10 flex-1">
           <TransitionOverlay>

@@ -1,18 +1,42 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useTransition } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useTransition,
+  createContext,
+  useContext,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
-import type { CollectionWithSamples } from "@/lib/icons/queries";
+import type { CollectionPageRow, SampleIcon } from "@/lib/icons/queries";
 import { useSearchTransition } from "./search-transition";
 
 type CollectionCardData = {
   prefix: string;
   name: string;
   total: number;
-  sampleIcons: { name: string; body: string; width: number; height: number }[];
+  sampleIcons?: SampleIcon[];
 };
 
-function SampleIcon({
+// Context for streaming sample icons into the grid
+const SampleIconsContext = createContext<Record<string, SampleIcon[]>>({});
+
+export function SampleIconsHydrator({ data }: { data: Record<string, SampleIcon[]> }) {
+  const { setSampleIcons } = useContext(SampleIconsSetterContext);
+  useEffect(() => {
+    setSampleIcons(data);
+  }, [data, setSampleIcons]);
+  return null;
+}
+
+const SampleIconsSetterContext = createContext<{
+  setSampleIcons: (data: Record<string, SampleIcon[]>) => void;
+}>({ setSampleIcons: () => {} });
+
+function SampleIconDisplay({
   body,
   width,
   height,
@@ -33,9 +57,23 @@ function SampleIcon({
   );
 }
 
+function SampleIconsSkeleton() {
+  return (
+    <>
+      <div className="h-4 w-4 rounded-sm bg-muted-foreground/10 animate-pulse" />
+      <div className="h-4 w-4 rounded-sm bg-muted-foreground/10 animate-pulse" />
+      <div className="h-4 w-4 rounded-sm bg-muted-foreground/10 animate-pulse" />
+    </>
+  );
+}
+
 function CollectionCard({ collection }: { collection: CollectionCardData }) {
   const router = useRouter();
   const { startTransition } = useSearchTransition();
+  const sampleIconsMap = useContext(SampleIconsContext);
+
+  const sampleIcons = collection.sampleIcons ?? sampleIconsMap[collection.prefix];
+  const isLoading = !sampleIcons;
 
   return (
     <button
@@ -47,15 +85,18 @@ function CollectionCard({ collection }: { collection: CollectionCardData }) {
       className="group flex items-center gap-4 border border-border bg-background p-4 transition-colors hover:bg-accent -mb-px -mr-px text-left cursor-pointer"
     >
       <div className="flex items-center gap-1.5 shrink-0">
-        {collection.sampleIcons.map((icon, i) => (
-          <SampleIcon
-            key={i}
-            body={icon.body}
-            width={icon.width}
-            height={icon.height}
-          />
-        ))}
-        {collection.sampleIcons.length === 0 && (
+        {isLoading ? (
+          <SampleIconsSkeleton />
+        ) : sampleIcons.length > 0 ? (
+          sampleIcons.map((icon, i) => (
+            <SampleIconDisplay
+              key={i}
+              body={icon.body}
+              width={icon.width}
+              height={icon.height}
+            />
+          ))
+        ) : (
           <div className="h-4 w-4 border border-dashed border-muted-foreground/30" />
         )}
       </div>
@@ -78,13 +119,16 @@ export function CollectionsGrid({
   collections,
   initialHasMore,
   license,
+  children,
 }: {
-  collections: CollectionWithSamples[];
+  collections: (CollectionPageRow | CollectionCardData)[];
   initialHasMore?: boolean;
   license?: string;
+  children?: ReactNode;
 }) {
   const [items, setItems] = useState<CollectionCardData[]>(collections);
   const [hasMore, setHasMore] = useState(initialHasMore ?? false);
+  const [sampleIcons, setSampleIcons] = useState<Record<string, SampleIcon[]>>({});
   const [, startTransition] = useTransition();
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
@@ -124,20 +168,25 @@ export function CollectionsGrid({
   }, [hasMore, loadMore]);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {items.map((c) => (
-          <CollectionCard key={c.prefix} collection={c} />
-        ))}
-      </div>
+    <SampleIconsSetterContext.Provider value={{ setSampleIcons }}>
+      <SampleIconsContext.Provider value={sampleIcons}>
+        {children}
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {items.map((c) => (
+              <CollectionCard key={c.prefix} collection={c} />
+            ))}
+          </div>
 
-      {hasMore && (
-        <div ref={sentinelRef} className="flex justify-center pb-8 pt-2">
-          <p className="font-mono text-xs text-muted-foreground animate-pulse">
-            loading...
-          </p>
+          {hasMore && (
+            <div ref={sentinelRef} className="flex justify-center pb-8 pt-2">
+              <p className="font-mono text-xs text-muted-foreground animate-pulse">
+                loading...
+              </p>
+            </div>
+          )}
         </div>
-      )}
-    </div>
+      </SampleIconsContext.Provider>
+    </SampleIconsSetterContext.Provider>
   );
 }
