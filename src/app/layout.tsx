@@ -7,6 +7,7 @@ import { GeistPixelSquare } from "geist/font/pixel";
 import { ThemeProvider } from "./components/theme-provider";
 import { CopyFormatProvider } from "./components/copy-format-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -72,6 +73,7 @@ export default function RootLayout({
           <Providers>{children}</Providers>
         </Suspense>
         <Toaster position="bottom-right" duration={2000} />
+        <Analytics />
       </body>
     </html>
   );
