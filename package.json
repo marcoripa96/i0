@@ -14,6 +14,7 @@
     "@ai-sdk/gateway": "^3.0.46",
     "@ai-sdk/google": "^3.0.29",
     "@iconify/utils": "3.1.0",
+    "@vercel/analytics": "^1.6.1",
     "ai": "^6.0.86",
     "better-auth": "^1.4.18",
     "class-variance-authority": "^0.7.1",
