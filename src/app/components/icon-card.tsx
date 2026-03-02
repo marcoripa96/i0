@@ -67,6 +67,7 @@ export function IconCard({ icon }: { icon: IconData }) {
 
   function handleClick() {
     if (isPending) return;
+    trigger("success");
 
     startTransition(async () => {
       const codePromise = getIconCode(icon.fullName, format);
@@ -108,7 +109,6 @@ export function IconCard({ icon }: { icon: IconData }) {
       }
 
       setCopied(true);
-      trigger("success");
       toast(`copied ${icon.fullName}`, {
         icon: (
           <InlineSvg
