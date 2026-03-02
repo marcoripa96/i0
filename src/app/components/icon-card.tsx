@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { useWebHaptics } from "web-haptics/react";
 import { getIconCode } from "@/app/actions";
 import { useCopyFormat } from "./copy-format-provider";
 
@@ -62,9 +63,11 @@ export function IconCard({ icon }: { icon: IconData }) {
   const { format } = useCopyFormat();
   const [copied, setCopied] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const { trigger } = useWebHaptics();
 
   function handleClick() {
     if (isPending) return;
+    trigger("success");
 
     startTransition(async () => {
       const codePromise = getIconCode(icon.fullName, format);
