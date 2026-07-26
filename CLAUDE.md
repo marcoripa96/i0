@@ -50,19 +50,30 @@ Local PostgreSQL 18 with pgvector and pg_textsearch extensions. ~303k icons, 223
 - `collections` table — prefix (PK), name, total, author (JSON text), license (JSON text), category, palette, height, version, samples (JSON text)
 - `icons` table — id (serial PK), prefix, name, full_name (unique idx), body (SVG), width, height, category, tags, search_text, embedding (vector(256))
 - `icons_bm25_idx` — BM25 index on `search_text` column (`text_config='english'`)
+- `icons_name_pattern_idx` — btree on `name` with `text_pattern_ops`, serving the `name LIKE 'arro%'` prefix arm of web search
 - `icons_embedding_idx` — HNSW vector index on `embedding` column (`vector_cosine_ops`)
 
 JSON columns (`author`, `license`, `samples`) are stored as text strings and parsed at query time. Use `(col::jsonb)->>'key'` for JSON access in raw SQL.
 
 ### Search
 
-Hybrid search combining BM25 keyword matching and semantic vector search:
+There are two search paths, and they do not use the same arms.
+
+**MCP** (`hybridSearch`, `src/lib/icons/search.ts`) — BM25 + semantic:
 
 1. **BM25** — pg_textsearch BM25-ranked keyword matches with English text config. Uses `<@>` operator with `to_bm25query()`. Name is double-weighted in `search_text` column.
 2. **Semantic** — Gemini `gemini-embedding-001` embeddings (256d) with pgvector HNSW cosine distance (`<=>` operator)
 3. **Merge** — RRF (Reciprocal Rank Fusion) combining both result sets
 
 BM25 and semantic search run in parallel. Semantic search gracefully degrades if embeddings aren't seeded or the API is unavailable.
+
+**Web** (`searchIconsWeb`, `src/lib/icons/queries.ts`) — BM25 + name prefix, no semantic arm:
+
+1. **BM25** — as above.
+2. **Prefix** — `name LIKE 'arro%'` against `icons_name_pattern_idx`, ordered shortest-name-first. BM25 only matches whole stemmed tokens, so without this arm a half-typed word returns nothing at all.
+3. **Merge** — RRF, then `ORDER BY (name = query) DESC` so an exact name always outranks the fused score.
+
+The query is lowercased (all stored names are lowercase) and `%`/`_`/`\` are escaped before being used as a LIKE pattern.
 
 ### MCP conventions
 
@@ -91,6 +102,7 @@ Keep responses lean — they are billed to every agent on every call:
 ## Gotchas
 
 - **`mcp-handler` pins the MCP SDK**: it peers `@modelcontextprotocol/sdk` at exactly `1.26.0`, so do not float that dependency to a newer release.
+- **`drizzle-kit push` drops indexes it cannot see in `schema.ts`**: every index must be declared there, including `icons_bm25_idx`, which is also created by `seed.ts`. Losing it breaks every query against the `icons` table. Rebuild with `CREATE INDEX icons_bm25_idx ON icons USING bm25(search_text) WITH (text_config='english')` (~7s).
 - **`shared_preload_libraries` must include `pg_textsearch`**: without it every query against the `icons` table fails, not just BM25 search — the index makes the extension mandatory for any scan of the table.
 - **Re-seeding clears all data**: `seed.ts` deletes and re-inserts all rows. No incremental updates. Must re-run `seed:embeddings` after re-seeding.
 - **Embedding seeding is slow**: ~50 min for 303k icons on free tier (250 icons/batch, 0.2s delay). Skips already-embedded icons.
