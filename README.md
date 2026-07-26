@@ -2,7 +2,7 @@
 
 Search 200k+ icons from 150+ open-source collections. Use the web UI or connect your AI agent via MCP.
 
-Built with [Next.js](https://nextjs.org), [xmcp](https://github.com/nichochar/xmcp), [Turso](https://turso.tech) (libSQL), [Drizzle ORM](https://orm.drizzle.team), and [Gemini](https://ai.google.dev) embeddings.
+Built with [Next.js](https://nextjs.org), [mcp-handler](https://github.com/vercel/mcp-handler), [Turso](https://turso.tech) (libSQL), [Drizzle ORM](https://orm.drizzle.team), and [Gemini](https://ai.google.dev) embeddings.
 
 ## Features
 
@@ -116,7 +116,7 @@ import { LucideHome } from "@/components/icons/lucide-home";
 src/
 ├── app/
 │   ├── page.tsx              # Landing page with search UI
-│   ├── mcp/route.ts          # MCP endpoint (xmcp adapter)
+│   ├── mcp/route.ts          # MCP endpoint (mcp-handler)
 │   ├── r/[name]/route.ts     # shadcn registry endpoint
 │   └── components/           # UI components
 ├── lib/
@@ -170,7 +170,7 @@ If embeddings haven't been seeded, search gracefully falls back to FTS5 only.
 ## Tech stack
 
 - [Next.js](https://nextjs.org) 16 — App Router, React Server Components
-- [xmcp](https://github.com/nichochar/xmcp) — MCP server framework with Next.js adapter
+- [mcp-handler](https://github.com/vercel/mcp-handler) — Vercel's MCP adapter for Next.js route handlers
 - [Turso](https://turso.tech) — libSQL database with vector search
 - [Drizzle ORM](https://orm.drizzle.team) — Type-safe SQL
 - [Gemini](https://ai.google.dev) — `gemini-embedding-001` for 256-d icon embeddings

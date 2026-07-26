@@ -1,46 +1,40 @@
-import { type PromptMetadata } from "xmcp";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-export const metadata: PromptMetadata = {
-  name: "icon-integration-playbook",
-  title: "Icon Integration Playbook",
-  description: "Turn selected icons into codebase-ready integration output",
-  role: "user",
-};
+const BODY = `Integrating already-chosen icons into the user's project.
 
-export default function iconIntegrationPlaybook() {
-  return `You already have the target icon fullName(s). Integrate them into the user's project with minimal friction.
+## Format
 
-## Format choice
+- React + shadcn project → shadcn install command.
+- Wants owned component source → \`get-icon\` with \`format: "react"\`.
+- Non-React stack, design asset, or inline markup → \`format: "svg"\`.
 
-1. **Prefer shadcn install commands** when the project uses React + shadcn workflow.
-2. **Use React output** when the user wants owned component source files.
-3. **Use raw SVG** for non-React stacks, design assets, or inline markup needs.
+## Calls
 
-## MCP usage
+- \`get-icon\` takes one id or an array, so fetch a whole set in one call.
+- shadcn path mapping: \`prefix:name\` becomes \`@icons0/prefix/name\`, installed with
+  \`npx shadcn@latest add @icons0/<collection>/<name>\` — combine ids in one command
+  where practical.
 
-- Single icon source:
-  - \`get-icon\` with \`{ name: "prefix:name", format: "react" }\` or \`format: "svg"\`
-- Batch source:
-  - \`get-icon\` with \`{ name: ["prefix:a", "prefix:b"], format: "react" }\`
-- Registry path mapping:
-  - Convert \`prefix:name\` to \`@icons0/prefix/name\` for shadcn install commands.
+## Errors
 
-## Installation flow (shadcn)
+\`NOT_FOUND\` re-run \`search-icons\` and offer corrected candidates ·
+\`INVALID_PARAMS\` repair and retry once · \`INTERNAL\` retry once, then fall back to
+SVG if the React conversion is what failed.
 
-- Build command from selected icon:
-  - \`npx shadcn@latest add @icons0/<collection>/<name>\`
-- For multiple icons, include all package paths in one command when practical.
+## Output
 
-## Response requirements
+Copy-pasteable commands or code blocks, with target paths and imports where
+relevant. Carry the license through when attribution matters. Keep it short.`;
 
-- Provide copy-pasteable commands or code blocks.
-- Include expected target paths/imports when relevant.
-- Include license title/source collection for attribution-sensitive contexts.
-- Keep output short and execution-oriented.
-
-## Error handling
-
-- \`NOT_FOUND\`: run \`search-icons\` and present corrected candidates.
-- \`INVALID_PARAMS\`: repair request shape and retry once.
-- \`INTERNAL\`: retry once, then provide fallback format (SVG if React conversion fails).`;
+export function registerIconIntegrationPlaybook(server: McpServer) {
+  server.registerPrompt(
+    "icon-integration-playbook",
+    {
+      title: "Icon Integration Playbook",
+      description: "Turn selected icons into codebase-ready integration output",
+    },
+    () => ({
+      messages: [{ role: "user", content: { type: "text", text: BODY } }],
+    }),
+  );
 }

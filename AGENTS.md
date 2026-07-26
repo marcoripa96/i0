@@ -1,6 +1,6 @@
 # icons0 — Icon Search MCP Server
 
-Next.js app with xmcp MCP server. Serves 200k+ icons from 150+ open-source collections. Built with xmcp (Next.js adapter), PostgreSQL 18 (pgvector + pg_textsearch), Drizzle ORM, BM25 full-text search, and Gemini semantic embeddings.
+Next.js app with an MCP server. Serves 200k+ icons from 150+ open-source collections. Built with `mcp-handler` (Vercel's MCP adapter), PostgreSQL 18 (pgvector + pg_textsearch), Drizzle ORM, BM25 full-text search, and Gemini semantic embeddings.
 
 ## Commands
 
@@ -9,14 +9,16 @@ docker compose up -d       # Start PostgreSQL 18 (pgvector + pg_textsearch)
 bunx drizzle-kit push      # Push schema to PG (creates tables + HNSW index)
 bun run seed               # Seed PG from @iconify/json (required before first run)
 bun run seed:embeddings    # Generate vector embeddings for all icons (requires GOOGLE_API_KEY)
-bun run build              # Build for production (xmcp build → next build)
-bun run dev                # Dev server on :3000 (xmcp dev + next dev --turbopack)
+bun run build              # Build for production (next build)
+bun run dev                # Dev server on :3000 (next dev --turbopack)
 bun run start              # Run production build (next start)
 ```
 
 ## Architecture
 
-Next.js App Router with xmcp running as a route handler at `/mcp`. The xmcp adapter is built to `.xmcp/adapter/` and imported by `src/app/mcp/route.ts`.
+Next.js App Router with `mcp-handler` running as a route handler at `/mcp`. `src/app/mcp/route.ts` builds the server with `createMcpHandler`, registering each tool and prompt explicitly, and wraps it in `withMcpAuth` for bearer-token auth.
+
+The handler is configured with `basePath: ""`, which resolves its streamable-HTTP endpoint to `/mcp` — matching the route's own path, so the published URL is unchanged. `disableSse: true` because SSE is the only transport that needs Redis.
 
 **Runtime has zero dependency on `@iconify/json`** (395MB). Icon SVG bodies are stored in PostgreSQL at seed time. At runtime, `@iconify/utils` renders SVGs from DB data. `@iconify/json` is a devDependency only.
 
@@ -24,12 +26,11 @@ Next.js App Router with xmcp running as a route handler at `/mcp`. The xmcp adap
 
 ### Key files
 
-- `xmcp.config.ts` — xmcp config with `experimental: { adapter: "nextjs" }`
 - `next.config.ts` — Next.js config
 - `Dockerfile.pg` — PostgreSQL 18 image with pgvector + pg_textsearch
 - `docker-compose.yml` — Docker Compose for local PostgreSQL
 - `docker/init.sql` — Creates pgvector and pg_textsearch extensions
-- `src/app/mcp/route.ts` — MCP endpoint (imports `xmcpHandler` from `@xmcp/adapter`)
+- `src/app/mcp/route.ts` — MCP endpoint: server construction, tool/prompt registration, and token auth
 - `src/app/page.tsx` — Landing page
 - `src/lib/db/schema.ts` — Drizzle table definitions (`collections`, `icons`) with pgvector and HNSW index
 - `src/lib/db/connection.ts` — postgres.js + Drizzle ORM connection
@@ -38,9 +39,9 @@ Next.js App Router with xmcp running as a route handler at `/mcp`. The xmcp adap
 - `src/lib/icons/svg.ts` — Renders SVG from DB body/width/height using @iconify/utils
 - `src/lib/icons/react.ts` — Converts SVG to typed React component string (regex-based, following icones project pattern)
 - `src/lib/icons/search.ts` — Hybrid BM25 + semantic vector search
+- `src/lib/mcp/response.ts` — Tool result helpers (`ok`, `fail`, `table`)
 - `src/tools/` — MCP tools (search-icons, get-icon, list-collections, list-licenses)
 - `src/prompts/` — Agent guidance prompts
-- `src/resources/` — MCP resources (currently empty)
 
 ### Database
 
@@ -63,14 +64,16 @@ Hybrid search combining BM25 keyword matching and semantic vector search:
 
 BM25 and semantic search run in parallel. Semantic search gracefully degrades if embeddings aren't seeded or the API is unavailable.
 
-### xmcp conventions
+### MCP conventions
 
-Tools, prompts, and resources are file-system discovered from `src/tools/`, `src/prompts/`, `src/resources/`. Each file exports:
-- `schema` — Zod object for tool params
-- `metadata` — Name, description, annotations
-- `default function` — Handler (async)
+Tools and prompts are registered explicitly — there is no filesystem discovery. Each file in `src/tools/` exports a single `registerX(server)` that calls `server.registerTool(name, { title, description, inputSchema, annotations }, handler)`; `src/prompts/` files do the same with `registerPrompt`. `src/app/mcp/route.ts` calls each one. Adding a tool means adding a file and one line in the route.
 
-Tool handlers return `{ content: [{ type: "text", text }], structuredContent?, isError? }`.
+**Responses are plain text, and deliberately carry no `structuredContent`.** No tool declares an `outputSchema`, so a structured copy adds no validation and doubles the token cost of every response. Build results with `ok(text)` / `fail(code, message)` from `src/lib/mcp/response.ts`; use `table()` for row data, which emits TSV.
+
+Keep responses lean — they are billed to every agent on every call:
+- `search-icons` returns bare `prefix:name` ids, one per line. The prefix already identifies the collection.
+- `list-collections` returns prefix/name/count only. `get-icon` reports the license of the icon actually chosen.
+- Errors are one line, `CODE: message`, with the code kept machine-detectable for the retry rules in the prompts.
 
 ### Querying
 
@@ -87,7 +90,8 @@ Tool handlers return `{ content: [{ type: "text", text }], structuredContent?, i
 
 ## Gotchas
 
-- **xmcp adapter dir bug**: `xmcp build` doesn't create `.xmcp/adapter/` before writing to it. The build script works around this with `mkdir -p .xmcp/adapter && xmcp build`.
+- **`mcp-handler` pins the MCP SDK**: it peers `@modelcontextprotocol/sdk` at exactly `1.26.0`, so do not float that dependency to a newer release.
+- **`shared_preload_libraries` must include `pg_textsearch`**: without it every query against the `icons` table fails, not just BM25 search — the index makes the extension mandatory for any scan of the table.
 - **Re-seeding clears all data**: `seed.ts` deletes and re-inserts all rows. No incremental updates. Must re-run `seed:embeddings` after re-seeding.
 - **Embedding seeding is slow**: ~50 min for 303k icons on free tier (250 icons/batch, 0.2s delay). Skips already-embedded icons.
 - **BM25 English text config**: pg_textsearch handles stemming via English text config. "arrows" matches "arrow", "deleting" matches "delete".
