@@ -23,6 +23,14 @@ export type CollectionWithSamples = CollectionRow & {
   sampleIcons: SampleIcon[];
 };
 
+/** What `CollectionsGrid` renders: no license, no author, no sample names. */
+export type CollectionCardRow = {
+  prefix: string;
+  name: string;
+  total: number;
+  sampleIcons: SampleIcon[];
+};
+
 export type CollectionPageRow = {
   prefix: string;
   name: string;
@@ -81,61 +89,33 @@ export async function getCollectionSummaries(): Promise<CollectionSummary[]> {
   }));
 }
 
-export async function getCollections(): Promise<CollectionWithSamples[]> {
+/**
+ * Every collection, as the little that a name filter needs: 31 KB, against the
+ * 430 KB this replaced — a whole-table read that hydrated three sample SVG
+ * bodies for each of the 223 collections.
+ *
+ * Deliberately not folded into `getCollectionSummaries`. That one carries the
+ * parsed `license` for the license filter and is read on every page load, so
+ * merging the two would push 17 KB of sample names onto the hotter path to save
+ * one cache entry.
+ */
+export async function getCollectionFilterList(): Promise<CollectionPageRow[]> {
   "use cache";
   cacheLife("max");
 
-  const rows = await db.select().from(collections).orderBy(collections.prefix);
+  const rows = await db
+    .select({
+      prefix: collections.prefix,
+      name: collections.name,
+      total: collections.total,
+      samples: collections.samples,
+    })
+    .from(collections)
+    .orderBy(collections.prefix);
 
-  const parsed: CollectionRow[] = rows.map((r) => ({
+  return rows.map((r) => ({
     ...r,
-    author: r.author ? JSON.parse(r.author) : null,
-    license: r.license ? JSON.parse(r.license) : null,
     samples: r.samples ? JSON.parse(r.samples) : null,
-  }));
-
-  // Build list of sample icon full_names to batch-fetch
-  const sampleFullNames: string[] = [];
-  for (const c of parsed) {
-    if (c.samples) {
-      for (const s of c.samples.slice(0, 3)) {
-        sampleFullNames.push(`${c.prefix}:${s}`);
-      }
-    }
-  }
-
-  // Batch fetch sample icons
-  const sampleIcons =
-    sampleFullNames.length > 0
-      ? await db
-          .select({
-            fullName: icons.fullName,
-            name: icons.name,
-            body: icons.body,
-            width: icons.width,
-            height: icons.height,
-          })
-          .from(icons)
-          .where(inArray(icons.fullName, sampleFullNames))
-      : [];
-
-  const sampleMap = new Map(sampleIcons.map((i) => [i.fullName, i]));
-
-  return parsed.map((c) => ({
-    ...c,
-    sampleIcons: (c.samples || [])
-      .slice(0, 3)
-      .map((s) => sampleMap.get(`${c.prefix}:${s}`))
-      .filter(
-        (i): i is { fullName: string; name: string; body: string; width: number; height: number } =>
-          i != null
-      )
-      .map((i) => ({
-        name: i.name,
-        body: i.body,
-        width: i.width ?? 24,
-        height: i.height ?? 24,
-      })),
   }));
 }
 
@@ -204,6 +184,20 @@ export async function getSampleIconsBatch(
   "use cache";
   cacheLife("max");
 
+  return fetchSampleIcons(collections);
+}
+
+/**
+ * The uncached body of `getSampleIconsBatch`.
+ *
+ * Callers whose collection set is derived from a user query — `searchCollections`
+ * — cache the whole result under the query instead, so hydrating through the
+ * cached wrapper would only add a second, redundant entry keyed by the same
+ * user input.
+ */
+async function fetchSampleIcons(
+  collections: Pick<CollectionPageRow, "prefix" | "samples">[],
+): Promise<Record<string, SampleIcon[]>> {
   const sampleFullNames: string[] = [];
   for (const c of collections) {
     if (c.samples) {
@@ -692,14 +686,31 @@ export async function browseAllIcons(
 
 export async function searchCollections(
   query: string
-): Promise<CollectionWithSamples[]> {
-  const allCollections = await getCollections();
+): Promise<CollectionCardRow[]> {
+  "use cache";
+  // Keyed by the query, the same way `searchIconsWeb` is, so the debounced
+  // keystrokes behind one search share an entry rather than each re-filtering.
+  cacheLife("hours");
+
   const q = query.toLowerCase();
-  return allCollections.filter(
+  const matched = (await getCollectionFilterList()).filter(
     (c) =>
       c.prefix.toLowerCase().includes(q) ||
       c.name.toLowerCase().includes(q)
   );
+  // Most searches are for an icon, not a collection, and match nothing here —
+  // "arrow" and "home" both return zero. Bailing out early is the common path.
+  if (matched.length === 0) return [];
+
+  // Sample bodies for the handful that matched, rather than all 223.
+  const sampleIcons = await fetchSampleIcons(matched);
+
+  return matched.map((c) => ({
+    prefix: c.prefix,
+    name: c.name,
+    total: c.total,
+    sampleIcons: sampleIcons[c.prefix] ?? [],
+  }));
 }
 
 export async function getIconByFullName(

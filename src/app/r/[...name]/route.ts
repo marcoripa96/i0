@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getIconByFullName,
   browseIcons,
-  getCollections,
+  getCollectionSummaries,
 } from "@/lib/icons/queries";
 import { renderIconSvg } from "@/lib/icons/svg";
 import { svgToReactComponent } from "@/lib/icons/react";
@@ -96,7 +96,7 @@ async function handleCollection(prefix: string) {
 }
 
 async function handleRegistry() {
-  const allCollections = await getCollections();
+  const allCollections = await getCollectionSummaries();
 
   const items = allCollections.map((c) => ({
     name: c.prefix,
