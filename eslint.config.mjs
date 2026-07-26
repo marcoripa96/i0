@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Throwaway measurement scripts kept alongside a card's review artifacts.
+    // Git-ignored, never shipped, and not worth holding to the app's rules.
+    ".kanby/**",
   ]),
 ]);
 
