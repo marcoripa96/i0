@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCollectionsPaginated } from "@/lib/icons/queries";
+import { CACHE_HEADERS } from "../cache";
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
         sampleIcons: c.sampleIcons,
       })),
       hasMore: data.hasMore,
-    });
+    }, { headers: CACHE_HEADERS });
   } catch (error) {
     console.error("[api/collections] Request failed:", error);
     return NextResponse.json(
