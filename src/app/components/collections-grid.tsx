@@ -128,14 +128,16 @@ export function CollectionsGrid({
 }) {
   const [items, setItems] = useState<CollectionCardData[]>(collections);
   const [hasMore, setHasMore] = useState(initialHasMore ?? false);
+  const [failed, setFailed] = useState(false);
   const [sampleIcons, setSampleIcons] = useState<Record<string, SampleIcon[]>>({});
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
 
   const loadMore = useCallback(() => {
     if (loadingRef.current) return;
     loadingRef.current = true;
+    setFailed(false);
 
     const offset = items.length;
     const params = new URLSearchParams();
@@ -143,17 +145,28 @@ export function CollectionsGrid({
     params.set("offset", String(offset));
 
     startTransition(async () => {
-      const res = await fetch(`/api/collections?${params.toString()}`);
-      const data = await res.json();
-      setItems((prev) => [...prev, ...data.results]);
-      setHasMore(data.hasMore);
-      loadingRef.current = false;
+      // See icon-grid.tsx: an uncaught throw here escapes the transition to the
+      // root error boundary and takes the whole page down with it.
+      try {
+        const res = await fetch(`/api/collections?${params.toString()}`);
+        if (!res.ok) throw new Error(`/api/collections responded ${res.status}`);
+        const data = await res.json();
+        if (!Array.isArray(data.results)) throw new Error("/api/collections returned no results array");
+        setItems((prev) => [...prev, ...data.results]);
+        setHasMore(data.hasMore);
+      } catch {
+        setFailed(true);
+      } finally {
+        loadingRef.current = false;
+      }
     });
   }, [items.length, license, startTransition]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
-    if (!sentinel || !hasMore) return;
+    // Not re-armed after a failure: the sentinel is still on screen, so it
+    // would immediately retry against a server that just failed.
+    if (!sentinel || !hasMore || failed) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -161,11 +174,13 @@ export function CollectionsGrid({
           loadMore();
         }
       },
+      // Left at 200px — see icon-grid.tsx for the measurement that rejected
+      // widening this.
       { rootMargin: "200px" },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, loadMore]);
+  }, [hasMore, failed, loadMore]);
 
   return (
     <SampleIconsSetterContext.Provider value={{ setSampleIcons }}>
@@ -179,10 +194,25 @@ export function CollectionsGrid({
           </div>
 
           {hasMore && (
-            <div ref={sentinelRef} className="flex justify-center pb-8 pt-2">
-              <p className="font-mono text-xs text-muted-foreground animate-pulse">
-                loading...
-              </p>
+            <div ref={sentinelRef} className="flex flex-col items-center gap-2 pb-8 pt-2">
+              {failed ? (
+                <>
+                  <p className="font-mono text-xs text-muted-foreground">
+                    could not load more collections
+                  </p>
+                  <button
+                    onClick={loadMore}
+                    disabled={isPending}
+                    className="border border-border px-2 py-1 font-mono text-xs transition-colors hover:bg-accent disabled:opacity-50 cursor-pointer"
+                  >
+                    [retry]
+                  </button>
+                </>
+              ) : (
+                <p className="font-mono text-xs text-muted-foreground animate-pulse">
+                  loading...
+                </p>
+              )}
             </div>
           )}
         </div>
