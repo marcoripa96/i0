@@ -4,6 +4,11 @@ services:
       context: .
       dockerfile: Dockerfile.pg
     shm_size: 256mb
+    # pg_textsearch refuses to serve any scan of a table carrying a BM25 index
+    # unless it is preloaded, so without this every query against `icons` fails,
+    # not just search. Passed on the command line rather than baked into the
+    # image so it also applies to clusters that already exist.
+    command: postgres -c shared_preload_libraries=pg_textsearch
     ports:
       - "5432:5432"
     volumes:
