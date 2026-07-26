@@ -372,6 +372,14 @@ export default function Home({
               >
                 [github]
               </a>
+              <a
+                href="https://ko-fi.com/marcoripamonti"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                [ko-fi]
+              </a>
             </span>
             <UserMenu />
           </div>
@@ -419,7 +427,7 @@ export default function Home({
 
       <footer className="mt-12 border-t border-border pt-6 pb-8 flex flex-col items-center gap-4">
         <p className="font-mono text-[10px] text-muted-foreground/40 text-center">
-          powered by <a href="https://iconify.design" target="_blank" rel="noopener noreferrer" className="text-muted-foreground/60 transition-colors hover:text-muted-foreground">iconify</a> · <a href="https://github.com/marcoripa96/i0" target="_blank" rel="noopener noreferrer" className="text-muted-foreground/60 transition-colors hover:text-muted-foreground">github</a> · MIT license
+          powered by <a href="https://iconify.design" target="_blank" rel="noopener noreferrer" className="text-muted-foreground/60 transition-colors hover:text-muted-foreground">iconify</a> · <a href="https://github.com/marcoripa96/i0" target="_blank" rel="noopener noreferrer" className="text-muted-foreground/60 transition-colors hover:text-muted-foreground">github</a> · <a href="https://ko-fi.com/marcoripamonti" target="_blank" rel="noopener noreferrer" className="text-muted-foreground/60 transition-colors hover:text-muted-foreground">ko-fi</a> · MIT license
         </p>
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-[10px] text-muted-foreground/40">made by</span>
