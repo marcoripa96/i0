@@ -33,7 +33,7 @@ The handler is configured with `basePath: ""`, which resolves its streamable-HTT
 - `src/app/mcp/route.ts` — MCP endpoint: server construction, tool/prompt registration, and token auth
 - `src/app/page.tsx` — Landing page
 - `src/lib/db/schema.ts` — Drizzle table definitions (`collections`, `icons`) with pgvector and HNSW index
-- `src/lib/db/connection.ts` — postgres.js + Drizzle ORM connection
+- `src/lib/db/connection.ts` — postgres.js + Drizzle ORM connection, with the pool configured explicitly
 - `src/lib/db/seed.ts` — Seeds DB from @iconify/json, builds BM25 index with pg_textsearch
 - `src/lib/db/seed-embeddings.ts` — Generates Gemini embeddings for all icons
 - `src/lib/icons/svg.ts` — Renders SVG from DB body/width/height using @iconify/utils
@@ -96,11 +96,12 @@ Keep responses lean — they are billed to every agent on every call:
 
 ## Environment Variables
 
-- `DATABASE_URL` — PostgreSQL connection URL (postgresql://icons0:icons0@localhost:5432/icons0)
+- `DATABASE_URL` — PostgreSQL connection URL (postgresql://icons0:icons0@localhost:5432/icons0). Required at build time as well as at runtime: `connection.ts` throws if it is unset, and `next build` collects page data for the API routes.
 - `GOOGLE_API_KEY` — Google API key for Gemini embeddings
 
 ## Gotchas
 
+- **The connection pool is tuned for app and database on one host**: `connection.ts` sets `max: 10`, `idle_timeout: 300`, `connect_timeout: 10`, `prepare: true`, all sized for the deployment where the app talks to Postgres over loopback with nothing pooling in front. Two of them have to move together with the topology: put a transaction-mode pooler (pgbouncer et al.) in front and `prepare` must become `false`, since consecutive queries can land on different backends; run more than one app instance and `max` is no longer the whole of `max_connections` (100) to spend. `idle_timeout` is 300 rather than 60 because a fresh connection costs ~14ms to first result against ~0.5ms pooled, and at this traffic a 60s timeout would charge that to roughly a quarter of requests.
 - **`mcp-handler` pins the MCP SDK**: it peers `@modelcontextprotocol/sdk` at exactly `1.26.0`, so do not float that dependency to a newer release.
 - **`drizzle-kit push` drops indexes it cannot see in `schema.ts`**: every index must be declared there, including `icons_bm25_idx`, which is also created by `seed.ts`. Losing it breaks every query against the `icons` table. Rebuild with `CREATE INDEX icons_bm25_idx ON icons USING bm25(search_text) WITH (text_config='english')` (~7s).
 - **`pg_textsearch` is pinned in `Dockerfile.pg`** (`PG_TEXTSEARCH_REF`, currently `v1.3.1`). The clone used to track `main`, so rebuilding the image moved it 1.0.0-dev -> 1.4.0-dev and picked up a library-version guard that broke a database which had worked for months. Bump the ref deliberately, never by rebuilding.
