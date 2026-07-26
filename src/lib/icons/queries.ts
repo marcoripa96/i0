@@ -407,7 +407,8 @@ export async function searchIconsWeb(
   cacheLife("hours");
 
   const bm25Query = buildBm25Query(query);
-  if (!bm25Query) return { results: [], hasMore: false };
+  const namePrefix = query.trim().toLowerCase();
+  if (!bm25Query && !namePrefix) return { results: [], hasMore: false };
 
   const collectionFilter = collection
     ? sql` AND i.prefix = ${collection}`
@@ -419,8 +420,44 @@ export async function searchIconsWeb(
   const licenseFilter = license
     ? sql` AND i.prefix IN (SELECT prefix FROM collections WHERE (license::jsonb)->>'title' = ${license})`
     : sql``;
+  const filters = sql`${collectionFilter}${categoryFilter}${licenseFilter}`;
+
+  // BM25 only matches whole stemmed tokens, so a half-typed word ("arro")
+  // matched nothing at all. The prefix arm covers the word being typed; the
+  // two are merged with RRF, the same way hybridSearch combines its arms.
+  const k = Math.min(Math.max(limit + offset + 20, 60), 1500);
+  const likePattern = `${namePrefix.replace(/[\\%_]/g, "\\$&")}%`;
+
+  // A query of pure punctuation sanitizes to an empty BM25 term, which
+  // to_bm25query rejects — so the arm is omitted rather than fed an empty
+  // string, and the merge runs on the prefix arm alone.
+  const bm25Arm = bm25Query
+    ? sql`
+      SELECT i.id,
+             row_number() OVER (ORDER BY i.search_text <@> to_bm25query(${bm25Query}, 'icons_bm25_idx')) AS rn
+      FROM icons i
+      WHERE i.search_text IS NOT NULL ${filters}
+      ORDER BY i.search_text <@> to_bm25query(${bm25Query}, 'icons_bm25_idx')
+      LIMIT ${k}`
+    : sql`SELECT NULL::int AS id, NULL::bigint AS rn WHERE false`;
 
   const rows = await db.execute<WebSearchResult>(sql`
+    WITH bm25 AS (${bm25Arm}),
+    pfx AS (
+      SELECT i.id,
+             -- Shortest name first, so "arrow" outranks "arrow-up-circle".
+             row_number() OVER (ORDER BY length(i.name), i.name, i.prefix) AS rn
+      FROM icons i
+      WHERE i.name LIKE ${likePattern} ${filters}
+      ORDER BY length(i.name), i.name, i.prefix
+      LIMIT ${k}
+    ),
+    merged AS (
+      SELECT COALESCE(b.id, p.id) AS id,
+             COALESCE(1.0 / (60 + b.rn), 0.0) + COALESCE(1.0 / (60 + p.rn), 0.0) AS score
+      FROM bm25 b
+      FULL OUTER JOIN pfx p ON b.id = p.id
+    )
     SELECT
       i.full_name AS "fullName",
       i.name,
@@ -431,10 +468,12 @@ export async function searchIconsWeb(
       COALESCE(i.height, 24) AS height,
       i.category,
       i.tags
-    FROM icons i
+    FROM merged
+    JOIN icons i ON i.id = merged.id
     JOIN collections c ON c.prefix = i.prefix
-    WHERE i.search_text IS NOT NULL ${collectionFilter} ${categoryFilter} ${licenseFilter}
-    ORDER BY i.search_text <@> to_bm25query(${bm25Query}, 'icons_bm25_idx')
+    -- Exact name wins outright: typing "home" must surface *:home above
+    -- "home-alt", whatever the fused rank says.
+    ORDER BY (i.name = ${namePrefix}) DESC, merged.score DESC, i.id ASC
     LIMIT ${limit + 1} OFFSET ${offset}
   `);
 

@@ -42,6 +42,15 @@ export const icons = pgTable(
     index("icons_category_prefix_name_idx").on(table.category, table.prefix, table.name),
     index("icons_prefix_category_idx").on(table.prefix, table.category),
     index("icons_embedding_idx").using("hnsw", table.embedding.op("vector_cosine_ops")),
+    // text_pattern_ops so `name LIKE 'arro%'` can use the index: the database
+    // collation is en_US.utf8, under which a default btree cannot serve LIKE.
+    // Names are all lowercase, so the query lowercases its input rather than
+    // wrapping the column and losing the index.
+    index("icons_name_pattern_idx").on(table.name.op("text_pattern_ops")),
+    // Declared here, not only in seed.ts: drizzle-kit push drops any index it
+    // cannot see in the schema, and losing this one makes every query against
+    // the table fail, not just search.
+    index("icons_bm25_idx").using("bm25", table.searchText).with({ text_config: "english" }),
   ]
 );
 
