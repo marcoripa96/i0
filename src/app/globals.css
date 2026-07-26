@@ -92,6 +92,12 @@
   }
   .icon-card {
     content-visibility: auto;
+    /* 88px is below the real card height (113px with the collection sub-label,
+       99px without) and that is deliberate — raising it to 113px was tried and
+       reverted. Chrome applies last-remembered-size here (the computed value
+       reads `auto 0px auto 88px`), so this is only ever a first-paint estimate:
+       measured scroll drift was identical at 88px and 113px, while 113px
+       reproducibly doubled script time on the format-toggle benchmark. */
     contain-intrinsic-size: 0 88px;
   }
   body::before {

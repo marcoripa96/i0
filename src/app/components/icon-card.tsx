@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { toast } from "sonner";
 import { useWebHaptics } from "web-haptics/react";
 import { buildIconCode } from "@/lib/icons/code";
-import { useCopyFormat } from "./copy-format-provider";
+import { useCopyFormatRef } from "./copy-format-provider";
 
 type IconData = {
   fullName: string;
@@ -81,8 +81,10 @@ function copyToClipboard(text: string) {
   }
 }
 
-export function IconCard({ icon }: { icon: IconData }) {
-  const { format } = useCopyFormat();
+function IconCardImpl({ icon }: { icon: IconData }) {
+  // Read at click time, not during render: subscribing here would re-render
+  // every card in the grid whenever the format changes.
+  const formatRef = useCopyFormatRef();
   const [copied, setCopied] = useState(false);
   const { trigger } = useWebHaptics();
 
@@ -91,7 +93,7 @@ export function IconCard({ icon }: { icon: IconData }) {
 
     // Rendered in the browser from props: no server roundtrip, so the copy and
     // the "copied!" state land in the same frame as the click.
-    copyToClipboard(buildIconCode(icon.fullName, icon, format));
+    copyToClipboard(buildIconCode(icon.fullName, icon, formatRef.current));
 
     setCopied(true);
     toast(`copied ${icon.fullName}`, {
@@ -149,3 +151,11 @@ export function IconCard({ icon }: { icon: IconData }) {
     </button>
   );
 }
+
+/**
+ * Memoized because `loadMore` appends to the results array, re-rendering the
+ * whole grid: without this, each page of 48 also re-renders every card already
+ * on screen. `icon` objects are stable per `fullName`, so the default shallow
+ * compare is enough.
+ */
+export const IconCard = memo(IconCardImpl);
