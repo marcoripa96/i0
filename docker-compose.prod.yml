@@ -3,6 +3,9 @@ services:
     image: ${REGISTRY}/${REGISTRY_PATH}/pg18-pg_textsearch:pg-${PG_VERSION:-latest}
     restart: unless-stopped
     shm_size: 256mb
+    # See docker-compose.yml: without the preload every query against `icons`
+    # fails, not just search.
+    command: postgres -c shared_preload_libraries=pg_textsearch
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
