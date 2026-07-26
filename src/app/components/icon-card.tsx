@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useWebHaptics } from "web-haptics/react";
-import { getIconCode } from "@/app/actions";
+import { buildIconCode } from "@/lib/icons/code";
 import { useCopyFormat } from "./copy-format-provider";
 
 type IconData = {
@@ -59,80 +59,60 @@ function CheckIcon({ size }: { size: number }) {
   );
 }
 
+function legacyCopy(text: string) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
+
+function copyToClipboard(text: string) {
+  // Called synchronously from the click handler, so user activation is still
+  // live and the async Clipboard API is allowed to fire. The textarea path
+  // covers insecure contexts, where navigator.clipboard is undefined.
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => legacyCopy(text));
+  } else {
+    legacyCopy(text);
+  }
+}
+
 export function IconCard({ icon }: { icon: IconData }) {
   const { format } = useCopyFormat();
   const [copied, setCopied] = useState(false);
-  const [isPending, startTransition] = useTransition();
   const { trigger } = useWebHaptics();
 
   function handleClick() {
-    if (isPending) return;
     trigger("success");
 
-    startTransition(async () => {
-      const codePromise = getIconCode(icon.fullName, format);
+    // Rendered in the browser from props: no server roundtrip, so the copy and
+    // the "copied!" state land in the same frame as the click.
+    copyToClipboard(buildIconCode(icon.fullName, icon, format));
 
-      // Use ClipboardItem with a deferred promise so the clipboard write is
-      // registered synchronously during the user gesture. Mobile browsers
-      // (Safari/iOS) expire user activation before async server actions
-      // complete, which causes navigator.clipboard.writeText() to fail.
-      let usedClipboardItem = false;
-      try {
-        const item = new ClipboardItem({
-          "text/plain": codePromise.then((code) => {
-            if (!code) throw new Error("No code");
-            return new Blob([code], { type: "text/plain" });
-          }) as Promise<Blob>,
-        });
-        await navigator.clipboard.write([item]);
-        usedClipboardItem = true;
-      } catch {
-        // ClipboardItem not supported or write failed — fall through
-      }
-
-      const code = await codePromise;
-      if (!code) return;
-
-      if (!usedClipboardItem) {
-        try {
-          await navigator.clipboard.writeText(code);
-        } catch {
-          const textarea = document.createElement("textarea");
-          textarea.value = code;
-          textarea.style.position = "fixed";
-          textarea.style.opacity = "0";
-          document.body.appendChild(textarea);
-          textarea.select();
-          document.execCommand("copy");
-          document.body.removeChild(textarea);
-        }
-      }
-
-      setCopied(true);
-      toast(`copied ${icon.fullName}`, {
-        icon: (
-          <InlineSvg
-            body={icon.body}
-            width={icon.width}
-            height={icon.height}
-            size={16}
-            className="fill-current shrink-0"
-          />
-        ),
-      });
-      setTimeout(() => setCopied(false), 1000);
+    setCopied(true);
+    toast(`copied ${icon.fullName}`, {
+      icon: (
+        <InlineSvg
+          body={icon.body}
+          width={icon.width}
+          height={icon.height}
+          size={16}
+          className="fill-current shrink-0"
+        />
+      ),
     });
+    setTimeout(() => setCopied(false), 1000);
   }
 
   return (
     <button
       onClick={handleClick}
       className={`icon-card group flex flex-col items-center gap-2.5 border border-border bg-background p-4 -mb-px -mr-px transition-transform duration-100 active:scale-[0.92] ${
-        copied
-          ? "bg-primary text-primary-foreground"
-          : isPending
-            ? "opacity-50"
-            : "hover:bg-accent"
+        copied ? "bg-primary text-primary-foreground" : "hover:bg-accent"
       }`}
     >
       <div className="relative flex h-10 w-10 items-center justify-center">
