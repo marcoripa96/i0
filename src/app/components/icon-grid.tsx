@@ -68,6 +68,7 @@ export function IconGrid({
 }) {
   const [results, setResults] = useState(initialResults);
   const [hasMore, setHasMore] = useState(initialHasMore);
+  const [failed, setFailed] = useState(false);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const { startTransition: startSearchTransition } = useSearchTransition();
@@ -77,6 +78,7 @@ export function IconGrid({
   const loadMore = useCallback(() => {
     if (loadingRef.current) return;
     loadingRef.current = true;
+    setFailed(false);
 
     const offset = results.length;
     const params = new URLSearchParams();
@@ -87,17 +89,35 @@ export function IconGrid({
     params.set("offset", String(offset));
 
     startTransition(async () => {
-      const res = await fetch(`/api/icons?${params.toString()}`);
-      const data = await res.json();
-      setResults((prev) => [...prev, ...data.results]);
-      setHasMore(data.hasMore);
-      loadingRef.current = false;
+      // Every throw in here has to be caught. An uncaught one propagates out of
+      // the transition to the nearest error boundary, which is the root: a
+      // single failed page request used to replace the whole page with "This
+      // page couldn't load", losing the results already on screen. Both a
+      // rejected fetch and a 500 — whose `{error}` body has no `results` to
+      // spread — got there.
+      try {
+        const res = await fetch(`/api/icons?${params.toString()}`);
+        if (!res.ok) throw new Error(`/api/icons responded ${res.status}`);
+        const data = await res.json();
+        if (!Array.isArray(data.results)) throw new Error("/api/icons returned no results array");
+        setResults((prev) => [...prev, ...data.results]);
+        setHasMore(data.hasMore);
+      } catch {
+        setFailed(true);
+      } finally {
+        // In `finally`, not at the end of the happy path: leaving this set is
+        // what wedged the grid, since every later call returned early on it.
+        loadingRef.current = false;
+      }
     });
   }, [results.length, query, collection, category, license, startTransition]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
-    if (!sentinel || !hasMore) return;
+    // Stop observing after a failure. The sentinel is still on screen, so
+    // re-arming would call `loadMore` again immediately and hammer a server
+    // that just failed; the retry button below puts it back under user control.
+    if (!sentinel || !hasMore || failed) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -105,11 +125,20 @@ export function IconGrid({
           loadMore();
         }
       },
+      // 200px, not the viewport-sized margin card #276 asked for. Widening it
+      // to "0px 0px 100% 0px" was tried and measured: at a realistic scroll
+      // rate the sentinel never reaches the screen at either value, and when it
+      // does — fast scrolling through a query nobody has cached — the stall
+      // tracks the cold query, not the trigger point. It landed on a different
+      // run each time, swinging 0-115 samples on one query set. A full viewport
+      // of lead buys ~0.3s against a 1-2s cold fetch, so there is nothing there
+      // to win, and prefetching a screen further ahead costs a page of SVG
+      // bodies the reader may never reach.
       { rootMargin: "200px" },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, loadMore]);
+  }, [hasMore, failed, loadMore]);
 
   if (results.length === 0) {
     return (
@@ -143,10 +172,27 @@ export function IconGrid({
       </div>
 
       {hasMore && (
-        <div ref={sentinelRef} className="flex justify-center pb-8 pt-2">
-          <p className="font-mono text-xs text-muted-foreground animate-pulse">
-            loading...
-          </p>
+        <div ref={sentinelRef} className="flex flex-col items-center gap-2 pb-8 pt-2">
+          {failed ? (
+            <>
+              <p className="font-mono text-xs text-muted-foreground">
+                could not load more icons
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadMore}
+                disabled={isPending}
+                className="font-mono text-xs"
+              >
+                [retry]
+              </Button>
+            </>
+          ) : (
+            <p className="font-mono text-xs text-muted-foreground animate-pulse">
+              loading...
+            </p>
+          )}
         </div>
       )}
     </div>
