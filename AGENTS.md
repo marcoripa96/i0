@@ -94,3 +94,19 @@ Tool handlers return `{ content: [{ type: "text", text }], structuredContent?, i
 - **Icon names vary by collection version**: e.g. Lucide uses `house` not `home` in current @iconify/json.
 - **Vector search needs embeddings**: If `seed:embeddings` hasn't run, semantic search silently returns no results and search falls back to BM25-only.
 - **Column aliases in PG**: Use double quotes for camelCase aliases in raw SQL (e.g. `AS "fullName"`) — PG folds unquoted identifiers to lowercase.
+
+<!-- kanby:begin -->
+## Task board (kanby)
+
+This project tracks its work on a kanban board operated with the `kanby`
+CLI (this directory is linked to the project, so commands work from anywhere
+inside it). Before ANY operational task — work that changes code, docs,
+config, or behavior; pure exploration and Q&A are exempt — read the kanby
+workflow skill and go through the board. The skill is installed per-user at
+`~/.claude/skills/kanby/SKILL.md`; the CLI keeps it current ("kanby skill
+refresh" rewrites it on demand).
+
+The skill carries the lifecycle cheat-sheet; consult `kanby agents` only
+when you need commands beyond it. Use only documented commands and flags —
+never guess (unknown commands and flags are errors).
+<!-- kanby:end -->
