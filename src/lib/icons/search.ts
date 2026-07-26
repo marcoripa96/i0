@@ -8,13 +8,14 @@ const queryEmbeddingModel = google.embedding("gemini-embedding-001");
 const MAX_HYBRID_WINDOW = 1500;
 
 
+/**
+ * Only `fullName` is projected: it is the sole value an agent needs to make the
+ * next call (`get-icon`), and it already encodes the collection via its prefix.
+ * Selecting name/collection/category/tags meant joining `collections` on every
+ * search to return fields the model then ignored.
+ */
 export type SearchResult = {
   fullName: string;
-  name: string;
-  prefix: string;
-  collection: string;
-  category: string | null;
-  tags: string | null;
 };
 
 function sanitizeQuery(query: string): string {
@@ -95,16 +96,9 @@ export async function hybridSearch(
           FROM bm25_matches bm25
           FULL OUTER JOIN vec_matches vec ON bm25.icon_id = vec.icon_id
         )
-        SELECT
-          i.full_name AS "fullName",
-          i.name,
-          i.prefix,
-          c.name AS collection,
-          i.category,
-          i.tags
+        SELECT i.full_name AS "fullName"
         FROM rrf
         JOIN icons i ON i.id = rrf.icon_id
-        JOIN collections c ON c.prefix = i.prefix
         WHERE 1=1 ${filters}
         ORDER BY rrf.score DESC, i.id ASC
         LIMIT ${limit + 1} OFFSET ${offset}
@@ -117,15 +111,8 @@ export async function hybridSearch(
 
   if (bm25Query) {
     const rows = await db.execute<SearchResult>(sql`
-      SELECT
-        i.full_name AS "fullName",
-        i.name,
-        i.prefix,
-        c.name AS collection,
-        i.category,
-        i.tags
+      SELECT i.full_name AS "fullName"
       FROM icons i
-      JOIN collections c ON c.prefix = i.prefix
       WHERE i.search_text IS NOT NULL ${filters}
       ORDER BY i.search_text <@> to_bm25query(${bm25Query}, 'icons_bm25_idx'), i.id ASC
       LIMIT ${limit + 1} OFFSET ${offset}
@@ -136,15 +123,8 @@ export async function hybridSearch(
   try {
     const vectorStr = `[${vectorQuery!.join(",")}]`;
     const rows = await db.execute<SearchResult>(sql`
-      SELECT
-        i.full_name AS "fullName",
-        i.name,
-        i.prefix,
-        c.name AS collection,
-        i.category,
-        i.tags
+      SELECT i.full_name AS "fullName"
       FROM icons i
-      JOIN collections c ON c.prefix = i.prefix
       WHERE i.embedding IS NOT NULL ${filters}
       ORDER BY i.embedding <=> ${vectorStr}::vector, i.id ASC
       LIMIT ${limit + 1} OFFSET ${offset}

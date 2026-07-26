@@ -1,75 +1,24 @@
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { type ToolMetadata, type InferSchema } from "xmcp";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { db } from "../lib/db/connection";
 import { icons, collections } from "../lib/db/schema";
 import { renderIconSvg } from "../lib/icons/svg";
 import { svgToReactComponent } from "../lib/icons/react";
-import { failure, parseJsonSafe, success } from "../lib/mcp/response";
+import { fail, ok, parseJsonSafe } from "../lib/mcp/response";
 
-export const schema = {
-  name: z.union([
-    z.string(),
-    z.array(z.string()).max(20),
-  ]).describe(
-    'Icon name(s) in "prefix:name" format. Pass a single string like "mdi:home" or an array ' +
-    'like ["mdi:home", "lucide:arrow-right"] for batch retrieval (max 20).'
-  ),
-  format: z.enum(["svg", "react"]).default("svg").optional().describe(
-    'Output format. "svg" returns raw SVG markup ready to embed. ' +
-    '"react" returns a complete ES module with a typed React component and props spread.'
-  ),
-  size: z.number().min(1).max(512).optional().describe(
-    "Override icon size in pixels (default varies by collection, typically 24). Range: 1-512."
-  ),
-};
+const MAX_BATCH = 20;
 
-export const metadata: ToolMetadata = {
-  name: "get-icon",
-  description:
-    "Retrieve icon(s) as SVG or React components. Accepts a single name or array of names from search-icons results. " +
-    "Returns full SVG markup, dimensions, collection info, and license for attribution.",
-  annotations: {
-    title: "Get Icon",
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-  },
-};
-
-type ResolvedIconError = {
-  fullName: string;
-  code: "INVALID_PARAMS" | "NOT_FOUND";
-  message: string;
-  hint: string;
-};
-
-type ResolvedIconSuccess = {
-  fullName: string;
-  collection: string;
-  category: string | null;
-  license: Record<string, unknown> | null;
-  icon: string;
-  width: number;
-  height: number;
-};
-
-type ResolvedIconResult = ResolvedIconSuccess | ResolvedIconError;
+type Resolved = { fullName: string; header: string; code: string } | { fullName: string; error: string };
 
 async function resolveIcon(
   fullName: string,
-  outputFormat: "svg" | "react",
+  format: "svg" | "react",
   size: number | undefined,
-): Promise<ResolvedIconResult> {
-  const normalizedFullName = fullName.trim();
-  const colonIdx = fullName.indexOf(":");
-  if (colonIdx === -1) {
-    return {
-      fullName: normalizedFullName,
-      code: "INVALID_PARAMS" as const,
-      message: `Invalid format "${normalizedFullName}". Expected "prefix:name" (e.g. "mdi:home").`,
-      hint: "Use search-icons to retrieve valid fullName values.",
-    };
+): Promise<Resolved> {
+  const id = fullName.trim();
+  if (!id.includes(":")) {
+    return { fullName: id, error: `not "prefix:name" format` };
   }
 
   const [row] = await db
@@ -77,107 +26,72 @@ async function resolveIcon(
       body: icons.body,
       width: icons.width,
       height: icons.height,
-      category: icons.category,
       collectionName: collections.name,
       license: collections.license,
     })
     .from(icons)
     .innerJoin(collections, eq(icons.prefix, collections.prefix))
-    .where(eq(icons.fullName, normalizedFullName))
+    .where(eq(icons.fullName, id))
     .limit(1);
 
-  if (!row) {
-    return {
-      fullName: normalizedFullName,
-      code: "NOT_FOUND" as const,
-      message: `Icon "${normalizedFullName}" not found.`,
-      hint: "Use search-icons to find valid icon names.",
-    };
-  }
+  if (!row) return { fullName: id, error: "not found" };
 
   const rendered = renderIconSvg(
     { body: row.body, width: row.width ?? 24, height: row.height ?? 24 },
     size,
   );
-
-  const icon = outputFormat === "react"
-    ? svgToReactComponent(rendered.svg, normalizedFullName)
-    : rendered.svg;
+  const license = parseJsonSafe<{ title?: string }>(row.license)?.title;
 
   return {
-    fullName: normalizedFullName,
-    collection: row.collectionName,
-    category: row.category,
-    license: parseJsonSafe<Record<string, unknown>>(row.license),
-    icon,
-    width: rendered.width,
-    height: rendered.height,
+    fullName: id,
+    // License travels with the icon because attribution is decided at use time.
+    header: [id, row.collectionName, license].filter(Boolean).join(" · "),
+    code: format === "react" ? svgToReactComponent(rendered.svg, id) : rendered.svg,
   };
 }
 
-export default async function getIcon({
-  name,
-  format,
-  size,
-}: InferSchema<typeof schema>) {
-  try {
-    const outputFormat = format ?? "svg";
-    const names = (Array.isArray(name) ? name : [name]).map((n) => n.trim()).filter(Boolean);
+export function registerGetIcon(server: McpServer) {
+  server.registerTool(
+    "get-icon",
+    {
+      title: "Get Icon",
+      description:
+        "Fetch icons by `prefix:name` id as SVG markup or a typed React component. " +
+        `Pass an array to fetch up to ${MAX_BATCH} at once. Includes the collection and license for attribution.`,
+      inputSchema: {
+        name: z
+          .union([z.string(), z.array(z.string()).max(MAX_BATCH)])
+          .describe(`One id like "mdi:home", or an array of up to ${MAX_BATCH}.`),
+        format: z.enum(["svg", "react"]).default("svg"),
+        size: z.number().min(1).max(512).optional().describe("Pixel size. Defaults to the icon's own."),
+      },
+      annotations: { readOnlyHint: true, idempotentHint: true },
+    },
+    async ({ name, format, size }) => {
+      try {
+        const ids = (Array.isArray(name) ? name : [name]).map((n) => n.trim()).filter(Boolean);
+        if (ids.length === 0) {
+          return fail("INVALID_PARAMS", 'No ids given. Pass something like "lucide:house".');
+        }
 
-    if (names.length === 0) {
-      return failure({
-        code: "INVALID_PARAMS",
-        message: "No icon names provided.",
-        hint: "Pass a name in prefix:name format, for example 'lucide:house'.",
-      });
-    }
+        const results = await Promise.all(ids.map((id) => resolveIcon(id, format, size)));
+        const found = results.filter((r): r is Extract<Resolved, { code: string }> => "code" in r);
+        const missing = results.filter((r): r is Extract<Resolved, { error: string }> => "error" in r);
 
-    const results = await Promise.all(names.map((n) => resolveIcon(n, outputFormat, size)));
+        if (found.length === 0) {
+          const detail = missing.map((m) => `${m.fullName} (${m.error})`).join(", ");
+          return fail("NOT_FOUND", `${detail}. Use search-icons for valid ids.`);
+        }
 
-    if (!Array.isArray(name)) {
-      const result = results[0];
-      if ("code" in result) {
-        return failure({
-          code: result.code,
-          message: result.message,
-          hint: result.hint,
-        });
+        const blocks = found.map((r) => `${r.header}\n${r.code}`);
+        if (missing.length > 0) {
+          blocks.push(`Failed: ${missing.map((m) => `${m.fullName} (${m.error})`).join(", ")}`);
+        }
+
+        return ok(blocks.join("\n\n"));
+      } catch {
+        return fail("INTERNAL", "Icon fetch failed. Retry once.");
       }
-
-      return success(result);
-    }
-
-    const succeeded = results.filter((r) => !("code" in r));
-    const failed = results
-      .filter((r) => "code" in r)
-      .map((r) => ({
-        fullName: r.fullName,
-        code: r.code,
-        message: r.message,
-        hint: r.hint,
-      }));
-
-    if (succeeded.length === 0) {
-      return failure({
-        code: "NOT_FOUND",
-        message: "No requested icons were found.",
-        hint: "Use search-icons to discover valid icon names.",
-        details: { failed },
-      });
-    }
-
-    return success({
-      icons: succeeded,
-      failed,
-      successCount: succeeded.length,
-      failureCount: failed.length,
-    });
-  } catch {
-    return failure({
-      code: "INTERNAL",
-      message: "Failed to retrieve icon data.",
-      retryable: true,
-      hint: "Retry the request. If the issue persists, check database connectivity.",
-    });
-  }
+    },
+  );
 }

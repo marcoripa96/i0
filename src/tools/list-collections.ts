@@ -1,79 +1,54 @@
 import { z } from "zod";
 import { ilike, eq, and, type SQL } from "drizzle-orm";
-import { type ToolMetadata, type InferSchema } from "xmcp";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { db } from "../lib/db/connection";
 import { collections } from "../lib/db/schema";
-import { failure, parseJsonSafe, success } from "../lib/mcp/response";
+import { fail, ok, table } from "../lib/mcp/response";
 
-export const schema = {
-  category: z.string().optional().describe(
-    'Filter by category. Available categories: "Emoji", "Flags / Maps", "Logos", "Material", ' +
-    '"Programming", "Thematic", "UI 16px / 32px", "UI 24px", "UI Multicolor", "UI Other / Mixed Grid".'
-  ),
-  search: z.string().optional().describe("Search collection names (case-insensitive substring match, e.g. 'material', 'fluent')"),
-};
+export function registerListCollections(server: McpServer) {
+  server.registerTool(
+    "list-collections",
+    {
+      title: "List Icon Collections",
+      description:
+        "Discover icon sets and their prefixes, to filter search-icons or to match a project's existing style. " +
+        "Returns prefix, name and icon count as TSV.",
+      inputSchema: {
+        category: z
+          .string()
+          .optional()
+          .describe(
+            'One of: Emoji, Flags / Maps, Logos, Material, Programming, Thematic, "UI 16px / 32px", "UI 24px", "UI Multicolor", "UI Other / Mixed Grid".',
+          ),
+        search: z.string().optional().describe("Substring match on the set name, e.g. 'material'."),
+      },
+      annotations: { readOnlyHint: true, idempotentHint: true },
+    },
+    async ({ category, search }) => {
+      try {
+        const conditions: SQL[] = [];
+        if (category?.trim()) conditions.push(eq(collections.category, category.trim()));
+        if (search?.trim()) conditions.push(ilike(collections.name, `%${search.trim()}%`));
 
-export const metadata: ToolMetadata = {
-  name: "list-collections",
-  description:
-    "List available icon collections with metadata. Use this to discover collection prefixes " +
-    "for filtering search-icons, or to find the right icon set for a project's style.",
-  annotations: {
-    title: "List Icon Collections",
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-  },
-};
+        // license/author/palette/samples are deliberately not returned: at ~223 rows
+        // they dominated the response, and get-icon already reports the license of
+        // the icon actually chosen.
+        const rows = await db
+          .select({
+            prefix: collections.prefix,
+            name: collections.name,
+            total: collections.total,
+          })
+          .from(collections)
+          .where(conditions.length > 0 ? and(...conditions) : undefined)
+          .orderBy(collections.prefix);
 
-export default async function listCollections({
-  category,
-  search,
-}: InferSchema<typeof schema>) {
-  try {
-    const normalizedCategory = category?.trim();
-    const normalizedSearch = search?.trim();
+        if (rows.length === 0) return ok("No collections matched.");
 
-    const conditions: SQL[] = [];
-    if (normalizedCategory) {
-      conditions.push(eq(collections.category, normalizedCategory));
-    }
-    if (normalizedSearch) {
-      conditions.push(ilike(collections.name, `%${normalizedSearch}%`));
-    }
-
-    const rows = await db
-      .select({
-        prefix: collections.prefix,
-        name: collections.name,
-        total: collections.total,
-        category: collections.category,
-        license: collections.license,
-        author: collections.author,
-        palette: collections.palette,
-        samples: collections.samples,
-      })
-      .from(collections)
-      .where(conditions.length > 0 ? and(...conditions) : undefined);
-
-    const result = rows.map((row) => ({
-      prefix: row.prefix,
-      name: row.name,
-      total: row.total,
-      category: row.category,
-      license: parseJsonSafe<Record<string, unknown>>(row.license),
-      author: parseJsonSafe<Record<string, unknown>>(row.author),
-      palette: row.palette,
-      samples: parseJsonSafe<string[]>(row.samples) ?? [],
-    }));
-
-    return success({ total: result.length, collections: result });
-  } catch {
-    return failure({
-      code: "INTERNAL",
-      message: "Failed to list icon collections.",
-      retryable: true,
-      hint: "Retry the request. If the issue persists, check database connectivity.",
-    });
-  }
+        return ok(table(["prefix", "name", "icons"], rows.map((r) => [r.prefix, r.name, r.total])));
+      } catch {
+        return fail("INTERNAL", "Could not list collections. Retry once.");
+      }
+    },
+  );
 }

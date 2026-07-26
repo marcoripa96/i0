@@ -1,75 +1,35 @@
+/**
+ * Tool results are plain text.
+ *
+ * Deliberately NOT returning `structuredContent`: none of these tools declare an
+ * `outputSchema`, so a structured copy buys no validation and would repeat the
+ * entire payload in every response — the client pays for both halves. Text-only
+ * roughly halves the token cost of every call.
+ */
+
+export type ToolResult = {
+  content: { type: "text"; text: string }[];
+  isError?: boolean;
+};
+
 export type ToolErrorCode =
-  | "AUTH_REQUIRED"
   | "AUTH_INVALID"
   | "RATE_LIMIT"
   | "INVALID_PARAMS"
   | "NOT_FOUND"
   | "INTERNAL";
 
-type ToolError = {
-  code: ToolErrorCode;
-  message: string;
-  retryable: boolean;
-  hint?: string;
-  details?: Record<string, unknown>;
-};
-
-type ToolSuccess<T> = {
-  ok: true;
-  data: T;
-  meta?: Record<string, unknown>;
-};
-
-type ToolFailure = {
-  ok: false;
-  error: ToolError;
-};
-
-function serialize(payload: ToolSuccess<unknown> | ToolFailure): string {
-  return JSON.stringify(payload, null, 2);
+export function ok(text: string): ToolResult {
+  return { content: [{ type: "text", text }] };
 }
 
-export function success<T>(
-  data: T,
-  meta?: Record<string, unknown>,
-) {
-  const payload: ToolSuccess<T> = meta
-    ? { ok: true, data, meta }
-    : { ok: true, data };
-
+/**
+ * `CODE: message` — keeps the code machine-detectable for the retry rules in the
+ * prompts at a cost of about two tokens.
+ */
+export function fail(code: ToolErrorCode, message: string): ToolResult {
   return {
-    content: [{ type: "text" as const, text: serialize(payload) }],
-    structuredContent: payload,
-  };
-}
-
-export function failure({
-  code,
-  message,
-  retryable = false,
-  hint,
-  details,
-}: {
-  code: ToolErrorCode;
-  message: string;
-  retryable?: boolean;
-  hint?: string;
-  details?: Record<string, unknown>;
-}) {
-  const payload: ToolFailure = {
-    ok: false,
-    error: {
-      code,
-      message,
-      retryable,
-      ...(hint ? { hint } : {}),
-      ...(details ? { details } : {}),
-    },
-  };
-
-  return {
-    content: [{ type: "text" as const, text: serialize(payload) }],
-    structuredContent: payload,
+    content: [{ type: "text", text: `${code}: ${message}` }],
     isError: true,
   };
 }
@@ -82,4 +42,11 @@ export function parseJsonSafe<T>(value: string | null | undefined): T | null {
   } catch {
     return null;
   }
+}
+
+/** Tab-separated rows: one token per separator, and trivially parseable. */
+export function table(header: string[], rows: (string | number | null)[][]): string {
+  return [header, ...rows]
+    .map((cells) => cells.map((c) => (c == null ? "" : String(c))).join("\t"))
+    .join("\n");
 }
