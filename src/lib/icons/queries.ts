@@ -400,6 +400,12 @@ export async function searchIconsWeb(
   offset = 0,
   license?: string,
 ): Promise<{ results: WebSearchResult[]; hasMore: boolean }> {
+  "use cache";
+  // Pure in its arguments, and users type prefixes — "a" / "ar" / "arr" are
+  // shared across every visitor, so the debounced keystrokes behind one search
+  // mostly hit the cache instead of re-running BM25 and refetching SVG bodies.
+  cacheLife("hours");
+
   const bm25Query = buildBm25Query(query);
   if (!bm25Query) return { results: [], hasMore: false };
 
