@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchIconsWeb, browseIcons, browseByCategory, browseAllIcons } from "@/lib/icons/queries";
+import { CACHE_HEADERS } from "../cache";
 
 export async function GET(request: NextRequest) {
   try {
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
           height: r.height,
         })),
         hasMore: data.hasMore,
-      });
+      }, { headers: CACHE_HEADERS });
     }
 
     if (collection) {
@@ -59,7 +60,7 @@ export async function GET(request: NextRequest) {
           height: r.height,
         })),
         hasMore: data.hasMore,
-      });
+      }, { headers: CACHE_HEADERS });
     }
 
     if (category) {
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
           height: r.height,
         })),
         hasMore: data.hasMore,
-      });
+      }, { headers: CACHE_HEADERS });
     }
 
     // Browse all icons (scope=icons, no query/collection/category)
@@ -91,7 +92,7 @@ export async function GET(request: NextRequest) {
         height: r.height,
       })),
       hasMore: data.hasMore,
-    });
+    }, { headers: CACHE_HEADERS });
   } catch (error) {
     console.error("[api/icons] Request failed:", error);
     return NextResponse.json(
