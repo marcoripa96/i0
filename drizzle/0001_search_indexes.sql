@@ -1,2 +1,0 @@
-CREATE INDEX "icons_name_pattern_idx" ON "icons" USING btree ("name" text_pattern_ops);--> statement-breakpoint
-CREATE INDEX "icons_bm25_idx" ON "icons" USING bm25 ("search_text") WITH (text_config=english);
