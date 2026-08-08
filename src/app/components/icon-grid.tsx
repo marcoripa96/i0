@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { IconCard } from "./icon-card";
 import { useCopyFormat } from "./copy-format-provider";
+import { COPY_FORMATS, type CopyFormat } from "@/lib/icons/copy-format";
 import { useSearchTransition } from "./search-transition";
 
 type IconData = {
@@ -17,36 +18,30 @@ type IconData = {
   height: number;
 };
 
+const FORMAT_LABELS: Record<CopyFormat, React.ReactNode> = {
+  name: "name",
+  svg: "svg",
+  react: <>react <span className="text-muted-foreground/60">tsx</span></>,
+  shadcn: "shadcn",
+};
+
 function FormatSelector() {
   const { format, setFormat } = useCopyFormat();
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1">
       <span className="font-mono text-[10px] text-muted-foreground/60 mr-1">copy as</span>
-      <Button
-        variant={format === "svg" ? "default" : "outline"}
-        size="sm"
-        onClick={() => setFormat("svg")}
-        className="h-6 px-2 font-mono text-[10px] transition-none"
-      >
-        svg
-      </Button>
-      <Button
-        variant={format === "react" ? "default" : "outline"}
-        size="sm"
-        onClick={() => setFormat("react")}
-        className="h-6 px-2 font-mono text-[10px] transition-none"
-      >
-        react <span className="text-muted-foreground/60">tsx</span>
-      </Button>
-      <Button
-        variant={format === "shadcn" ? "default" : "outline"}
-        size="sm"
-        onClick={() => setFormat("shadcn")}
-        className="h-6 px-2 font-mono text-[10px] transition-none"
-      >
-        shadcn
-      </Button>
+      {COPY_FORMATS.map((f) => (
+        <Button
+          key={f}
+          variant={format === f ? "default" : "outline"}
+          size="sm"
+          onClick={() => setFormat(f)}
+          className="h-6 px-2 font-mono text-[10px] transition-none"
+        >
+          {FORMAT_LABELS[f]}
+        </Button>
+      ))}
     </div>
   );
 }
