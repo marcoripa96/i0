@@ -145,7 +145,6 @@ export function registerSearchIcons(server: McpServer) {
           recordEvents([
             {
               eventType: "search",
-              source: "mcp",
               query: q,
               resultCount: Math.min(rows.length, limit),
               ...caller,

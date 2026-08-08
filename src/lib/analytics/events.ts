@@ -2,9 +2,21 @@ import { after } from "next/server";
 import { db } from "../db/connection";
 import { iconEvents } from "../db/schema";
 
+/**
+ * Only MCP calls are recorded, and the type is narrowed to say so.
+ *
+ * The web surfaces used to write here too — a copy beacon, the search page,
+ * the registry route — and every one of them was an unauthenticated endpoint
+ * whose numbers anyone could inflate with a shell loop. A leaderboard that can
+ * be forged is not worth showing, so they are gone rather than rate-limited:
+ * what remains is behind a bearer token and the per-user daily search limit.
+ *
+ * `source` is still written, always "mcp". The column stays because rows
+ * predating this change carry "web", and /stats filters on it rather than
+ * pretending that history isn't there.
+ */
 export type IconEvent = {
-  eventType: "get" | "copy" | "search" | "registry";
-  source: "mcp" | "web";
+  eventType: "get" | "search";
   fullName?: string | null;
   /** Only worth passing for a whole-collection event, which has no icon id. */
   prefix?: string | null;
@@ -45,7 +57,7 @@ export function recordEvents(events: IconEvent[]): void {
 
   const rows = events.map((e) => ({
     eventType: e.eventType,
-    source: e.source,
+    source: "mcp",
     fullName: e.fullName ?? null,
     prefix: e.prefix ?? prefixOf(e.fullName),
     client: e.client ?? null,

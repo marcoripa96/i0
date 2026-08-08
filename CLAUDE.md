@@ -47,9 +47,8 @@ The handler is configured with `basePath: ""`, which resolves its streamable-HTT
 - `src/lib/mcp/response.ts` — Tool result helpers (`ok`, `fail`, `table`)
 - `src/lib/analytics/events.ts` — `recordEvents()`: fire-and-forget writes to `icon_events`
 - `src/lib/analytics/mcp-caller.ts` — Resolves who is calling a tool (client name, version, user)
-- `src/lib/analytics/queries.ts` — The cached aggregates behind `/stats`
+- `src/lib/analytics/queries.ts` — The cached aggregates behind `/stats`, all scoped to MCP traffic
 - `src/app/stats/` — Public statistics page and its chart vocabulary
-- `src/app/api/events/route.ts` — Copy-button beacon; the only way a web copy reaches the server
 - `src/tools/` — MCP tools (search-icons, get-icon, list-collections, list-licenses)
 - `src/prompts/` — Agent guidance prompts
 
@@ -62,7 +61,7 @@ Local PostgreSQL 18 with pgvector and pg_textsearch extensions. ~303k icons, 223
 - `icons_bm25_idx` — BM25 index on `search_text` column (`text_config='english'`)
 - `icons_name_pattern_idx` — btree on `name` with `text_pattern_ops`, serving the `name LIKE 'arro%'` prefix arm of web search
 - `icons_embedding_idx` — HNSW vector index on `embedding` column (`vector_cosine_ops`)
-- `icon_events` table — one row per icon picked or searched: event_type (`get`/`copy`/`search`/`registry`), source (`mcp`/`web`), full_name, prefix, client, query, result_count, format, user_id, created_at. No FK to `icons`, because re-seeding deletes every icon row and the history has to outlive it.
+- `icon_events` table — one row per MCP `get-icon` or `search-icons` call: event_type (`get`/`search`), source (always `mcp`; older rows carry `web`), full_name, prefix, client, query, result_count, format, user_id, created_at. No FK to `icons`, because re-seeding deletes every icon row and the history has to outlive it.
 
 JSON columns (`author`, `license`, `samples`) are stored as text strings and parsed at query time. Use `(col::jsonb)->>'key'` for JSON access in raw SQL.
 
@@ -108,12 +107,21 @@ Keep responses lean — they are billed to every agent on every call:
 ### Usage stats
 
 `/stats` is public and reads only aggregates of `icon_events`. Every write goes
-through `recordEvents()`, which never blocks or fails its caller.
+through `recordEvents()`, which never blocks or fails its caller — it defers
+with `after()`, since a floating promise is dropped when a serverless
+invocation suspends.
 
-Capture points: `get-icon` and `search-icons` (MCP), the copy button (via the
-`/api/events` beacon — copying is client-side, so nothing else observes it),
-web search (logged in the page component, **not** in `searchIconsWeb`, which
-runs under `use cache`), and `/r/[...name]` (one row per pull, not per icon).
+**Only authenticated MCP calls are recorded**: `get-icon` and `search-icons`,
+and nothing else. The web surfaces used to write here too — a copy beacon at
+`/api/events`, the search page, the registry route — and each was an
+unauthenticated endpoint whose numbers anyone could inflate with a shell loop.
+They were removed rather than rate-limited: a public leaderboard that can be
+forged is not worth showing. Every query in `queries.ts` also filters
+`source = 'mcp'`, because rows written before that change carry `web`.
+
+For the same reason the leaderboard prints how many *distinct clients* fetched
+each icon beside its count — one agent in a retry loop moves the total but not
+that number.
 
 **Identifying the MCP client**: clients introduce themselves in `initialize`,
 but `mcp-handler` builds a fresh `McpServer` per POST with no

@@ -7,18 +7,23 @@ import { db } from "../db/connection";
  * of it is cached — a public page cannot afford a full scan per visitor. The
  * "minutes" profile is the trade: the numbers are a few minutes stale, which
  * for a leaderboard nobody can see moving is free.
+ *
+ * Every query is scoped to `source = 'mcp'`. Only authenticated MCP calls are
+ * recorded now, but rows written before that change carry 'web' and came from
+ * endpoints anyone could have driven with curl, so the filter is what keeps
+ * them out of the numbers rather than a migration that would rewrite history.
  */
 
-/** The events that mean "somebody took this icon away with them". */
-const PICKS = sql`event_type in ('get', 'copy', 'registry')`;
+/** Agent traffic only, and only the calls that took an icon away. */
+const AGENT = sql`source = 'mcp'`;
+const PICKS = sql`${AGENT} AND event_type = 'get'`;
 
 export type Overview = {
   picks: number;
-  human: number;
-  agent: number;
   searches: number;
   distinctIcons: number;
   distinctAgents: number;
+  distinctCollections: number;
   since: Date | null;
 };
 
@@ -28,33 +33,30 @@ export async function getOverview(): Promise<Overview> {
 
   const [row] = await db.execute<{
     picks: string;
-    human: string;
-    agent: string;
     searches: string;
     distinctIcons: string;
     distinctAgents: string;
+    distinctCollections: string;
     // Raw SQL comes back unparsed, so this is a string however much the
     // column says timestamp — hence the explicit Date below.
     since: string | null;
   }>(sql`
     SELECT
-      count(*) FILTER (WHERE ${PICKS})                                AS picks,
-      count(*) FILTER (WHERE ${PICKS} AND source = 'web')             AS human,
-      count(*) FILTER (WHERE ${PICKS} AND source = 'mcp')             AS agent,
-      count(*) FILTER (WHERE event_type = 'search')                   AS searches,
-      count(DISTINCT full_name) FILTER (WHERE ${PICKS})               AS "distinctIcons",
-      count(DISTINCT client)                                          AS "distinctAgents",
-      min(created_at)                                                 AS since
+      count(*) FILTER (WHERE ${PICKS})                          AS picks,
+      count(*) FILTER (WHERE ${AGENT} AND event_type = 'search') AS searches,
+      count(DISTINCT full_name) FILTER (WHERE ${PICKS})         AS "distinctIcons",
+      count(DISTINCT prefix) FILTER (WHERE ${PICKS})            AS "distinctCollections",
+      count(DISTINCT client) FILTER (WHERE ${AGENT})            AS "distinctAgents",
+      min(created_at) FILTER (WHERE ${AGENT})                   AS since
     FROM icon_events
   `);
 
   return {
     picks: Number(row?.picks ?? 0),
-    human: Number(row?.human ?? 0),
-    agent: Number(row?.agent ?? 0),
     searches: Number(row?.searches ?? 0),
     distinctIcons: Number(row?.distinctIcons ?? 0),
     distinctAgents: Number(row?.distinctAgents ?? 0),
+    distinctCollections: Number(row?.distinctCollections ?? 0),
     since: row?.since ? new Date(row.since) : null,
   };
 }
@@ -62,38 +64,42 @@ export async function getOverview(): Promise<Overview> {
 export type RankedIcon = {
   fullName: string;
   picks: number;
+  agents: number;
   body: string;
   width: number;
   height: number;
 };
 
 /**
- * The leaderboard. `source` narrows it to one audience — that comparison is
- * the whole point of the page, so the same query serves all three columns.
+ * The leaderboard.
+ *
+ * `agents` — how many distinct clients fetched it — travels with the count so
+ * the page can say whether a number is a consensus or one busy agent in a
+ * loop. It is the honest reading of a total that a single caller can run up.
  *
  * Inner join to `icons`: an id that no longer exists (a collection dropped a
  * name between seeds) has nothing to render, so it drops out rather than
  * leaving a hole in the grid.
  */
-export async function getTopIcons(
-  source: "web" | "mcp" | null,
-  limit = 12,
-): Promise<RankedIcon[]> {
+export async function getTopIcons(limit = 16): Promise<RankedIcon[]> {
   "use cache";
   cacheLife("minutes");
 
   const rows = await db.execute<{
     fullName: string;
     picks: string;
+    agents: string;
     body: string;
     width: number | null;
     height: number | null;
   }>(sql`
-    SELECT e.full_name AS "fullName", count(*) AS picks, i.body, i.width, i.height
+    SELECT e.full_name AS "fullName",
+           count(*)                 AS picks,
+           count(DISTINCT e.client) AS agents,
+           i.body, i.width, i.height
     FROM icon_events e
     JOIN icons i ON i.full_name = e.full_name
     WHERE ${PICKS}
-      ${source ? sql`AND e.source = ${source}` : sql``}
     GROUP BY e.full_name, i.body, i.width, i.height
     ORDER BY picks DESC, e.full_name
     LIMIT ${limit}
@@ -102,6 +108,7 @@ export async function getTopIcons(
   return rows.map((r) => ({
     fullName: r.fullName,
     picks: Number(r.picks),
+    agents: Number(r.agents),
     body: r.body,
     width: r.width ?? 24,
     height: r.height ?? 24,
@@ -110,10 +117,7 @@ export async function getTopIcons(
 
 export type RankedCollection = { prefix: string; name: string; picks: number };
 
-export async function getTopCollections(
-  source: "web" | "mcp" | null,
-  limit = 8,
-): Promise<RankedCollection[]> {
+export async function getTopCollections(limit = 10): Promise<RankedCollection[]> {
   "use cache";
   cacheLife("minutes");
 
@@ -122,7 +126,6 @@ export async function getTopCollections(
     FROM icon_events e
     LEFT JOIN collections c ON c.prefix = e.prefix
     WHERE ${PICKS} AND e.prefix IS NOT NULL
-      ${source ? sql`AND e.source = ${source}` : sql``}
     GROUP BY e.prefix, c.name
     ORDER BY picks DESC, e.prefix
     LIMIT ${limit}
@@ -135,22 +138,33 @@ export async function getTopCollections(
   }));
 }
 
-export type RankedAgent = { client: string; calls: number; icons: number };
+export type RankedAgent = {
+  client: string;
+  calls: number;
+  icons: number;
+  searches: number;
+};
 
 /**
  * Which MCP clients are out there. `client` is what the agent called itself in
  * `initialize`, falling back to its User-Agent — see lib/analytics/mcp-caller.
  */
-export async function getAgentLeaderboard(limit = 10): Promise<RankedAgent[]> {
+export async function getAgentLeaderboard(limit = 12): Promise<RankedAgent[]> {
   "use cache";
   cacheLife("minutes");
 
-  const rows = await db.execute<{ client: string; calls: string; icons: string }>(sql`
+  const rows = await db.execute<{
+    client: string;
+    calls: string;
+    icons: string;
+    searches: string;
+  }>(sql`
     SELECT client,
-           count(*)                    AS calls,
-           count(DISTINCT full_name)   AS icons
+           count(*) FILTER (WHERE event_type = 'get')     AS calls,
+           count(DISTINCT full_name)                      AS icons,
+           count(*) FILTER (WHERE event_type = 'search')  AS searches
     FROM icon_events
-    WHERE source = 'mcp' AND client IS NOT NULL
+    WHERE ${AGENT} AND client IS NOT NULL
     GROUP BY client
     ORDER BY calls DESC, client
     LIMIT ${limit}
@@ -160,6 +174,7 @@ export async function getAgentLeaderboard(limit = 10): Promise<RankedAgent[]> {
     client: r.client,
     calls: Number(r.calls),
     icons: Number(r.icons),
+    searches: Number(r.searches),
   }));
 }
 
@@ -220,30 +235,20 @@ export async function getMovers(limit = 8): Promise<Mover[]> {
 export type RankedQuery = { query: string; times: number; results: number };
 
 /**
- * What people typed.
+ * What agents asked for.
  *
- * The web search box navigates on a debounce, so typing "arrow" also logs
- * "arr" and "arro". The NOT EXISTS drops any query that a longer one from the
- * same two-minute window starts with — the keystrokes on the way to a word,
- * without needing a session id to tie them together. MCP queries arrive whole
- * and are unaffected by it.
+ * No prefix-folding here any more: the debounced keystrokes that needed it
+ * came from the web search box, and that no longer records. An MCP query
+ * arrives whole, once, as the agent phrased it.
  */
-export async function getTopSearches(limit = 10): Promise<RankedQuery[]> {
+export async function getTopSearches(limit = 12): Promise<RankedQuery[]> {
   "use cache";
   cacheLife("minutes");
 
   const rows = await db.execute<{ query: string; times: string; results: string }>(sql`
     SELECT query, count(*) AS times, round(avg(result_count)) AS results
-    FROM icon_events e
-    WHERE event_type = 'search' AND query <> ''
-      AND NOT EXISTS (
-        SELECT 1 FROM icon_events later
-        WHERE later.event_type = 'search'
-          AND later.source = e.source
-          AND later.query <> e.query
-          AND later.query LIKE e.query || '%'
-          AND later.created_at BETWEEN e.created_at AND e.created_at + interval '2 minutes'
-      )
+    FROM icon_events
+    WHERE ${AGENT} AND event_type = 'search' AND query <> ''
     GROUP BY query
     ORDER BY times DESC, query
     LIMIT ${limit}
@@ -263,16 +268,8 @@ export async function getEmptySearches(limit = 10): Promise<RankedQuery[]> {
 
   const rows = await db.execute<{ query: string; times: string }>(sql`
     SELECT query, count(*) AS times
-    FROM icon_events e
-    WHERE event_type = 'search' AND result_count = 0 AND length(query) >= 3
-      AND NOT EXISTS (
-        SELECT 1 FROM icon_events later
-        WHERE later.event_type = 'search'
-          AND later.source = e.source
-          AND later.query <> e.query
-          AND later.query LIKE e.query || '%'
-          AND later.created_at BETWEEN e.created_at AND e.created_at + interval '2 minutes'
-      )
+    FROM icon_events
+    WHERE ${AGENT} AND event_type = 'search' AND result_count = 0 AND query <> ''
     GROUP BY query
     ORDER BY times DESC, query
     LIMIT ${limit}
@@ -281,31 +278,31 @@ export async function getEmptySearches(limit = 10): Promise<RankedQuery[]> {
   return rows.map((r) => ({ query: r.query, times: Number(r.times), results: 0 }));
 }
 
-export type DayBar = { day: string; human: number; agent: number };
+export type DayBar = { day: string; picks: number; searches: number };
 
-/** Fourteen days of picks, split by audience. Gaps are filled, so a quiet day reads as one. */
+/** Fourteen days of agent traffic. Gaps are filled, so a quiet day reads as one. */
 export async function getDailyActivity(days = 14): Promise<DayBar[]> {
   "use cache";
   cacheLife("minutes");
 
-  const rows = await db.execute<{ day: string; human: string; agent: string }>(sql`
+  const rows = await db.execute<{ day: string; picks: string; searches: string }>(sql`
     SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
-           count(e.id) FILTER (WHERE e.source = 'web') AS human,
-           count(e.id) FILTER (WHERE e.source = 'mcp') AS agent
+           count(e.id) FILTER (WHERE e.event_type = 'get')    AS picks,
+           count(e.id) FILTER (WHERE e.event_type = 'search') AS searches
     FROM generate_series(
       date_trunc('day', now()) - make_interval(days => ${days - 1}),
       date_trunc('day', now()),
       interval '1 day'
     ) AS d(day)
     LEFT JOIN icon_events e
-      ON e.created_at >= d.day AND e.created_at < d.day + interval '1 day' AND ${PICKS}
+      ON e.created_at >= d.day AND e.created_at < d.day + interval '1 day' AND ${AGENT}
     GROUP BY d.day
     ORDER BY d.day
   `);
 
   return rows.map((r) => ({
     day: r.day,
-    human: Number(r.human),
-    agent: Number(r.agent),
+    picks: Number(r.picks),
+    searches: Number(r.searches),
   }));
 }

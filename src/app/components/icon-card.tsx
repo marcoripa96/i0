@@ -81,22 +81,6 @@ function copyToClipboard(text: string) {
   }
 }
 
-function reportCopy(fullName: string, format: string) {
-  const body = JSON.stringify({ fullName, format });
-
-  // sendBeacon survives the page being navigated away from mid-copy, which a
-  // fetch does not. Either way nothing is awaited: the copy already happened.
-  const blob = new Blob([body], { type: "application/json" });
-  if (navigator.sendBeacon?.("/api/events", blob)) return;
-
-  fetch("/api/events", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body,
-    keepalive: true,
-  }).catch(() => {});
-}
-
 function IconCardImpl({ icon }: { icon: IconData }) {
   // Read at click time, not during render: subscribing here would re-render
   // every card in the grid whenever the format changes.
@@ -109,9 +93,9 @@ function IconCardImpl({ icon }: { icon: IconData }) {
 
     // Rendered in the browser from props: no server roundtrip, so the copy and
     // the "copied!" state land in the same frame as the click.
-    const format = formatRef.current;
-    copyToClipboard(buildIconCode(icon.fullName, icon, format));
-    reportCopy(icon.fullName, format);
+    // Deliberately not reported anywhere: an unauthenticated beacon is a
+    // number anyone can inflate with curl, so /stats counts agents only.
+    copyToClipboard(buildIconCode(icon.fullName, icon, formatRef.current));
 
     setCopied(true);
     toast(`copied ${icon.fullName}`, {

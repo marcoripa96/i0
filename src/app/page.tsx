@@ -16,7 +16,6 @@ import {
   browseByCategory,
   browseAllIcons,
 } from "@/lib/icons/queries";
-import { recordEvents } from "@/lib/analytics/events";
 import { ThemeToggle } from "./components/theme-toggle";
 import { SearchInput, FiltersHydrator } from "./components/search-input";
 import { StickySearch } from "./components/sticky-search";
@@ -88,20 +87,6 @@ async function SearchResults({
   ]);
   const durationMs = Math.round(performance.now() - t0);
 
-  // Logged here rather than inside searchIconsWeb, which runs under "use
-  // cache": a cache hit would never reach the write, and a write in cache
-  // scope is not allowed anyway. This component is dynamic, so it sees every
-  // search and knows what it returned. (`next dev` renders this twice under
-  // Cache Components' validation pass, so a search logs twice locally; a
-  // production build logs once.)
-  //
-  // The search box navigates on a debounce, so a typed word also logs its own
-  // prefixes ("arr", "arro", "arrow"). That noise is left in and folded up at
-  // aggregation time — the alternative is a client beacon that cannot see the
-  // result count, which is what makes the zero-result list worth having.
-  recordEvents([
-    { eventType: "search", source: "web", query: q, resultCount: data.results.length },
-  ]);
 
   const results = data.results.map((r) => ({
     fullName: r.fullName,
