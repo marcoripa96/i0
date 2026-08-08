@@ -6,6 +6,7 @@ import { GeistMono } from "geist/font/mono";
 import { GeistPixelSquare } from "geist/font/pixel";
 import { ThemeProvider } from "./components/theme-provider";
 import { CopyFormatProvider } from "./components/copy-format-provider";
+import { parseCopyFormat } from "@/lib/icons/copy-format";
 import { Toaster } from "@/components/ui/sonner";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
@@ -39,9 +40,7 @@ async function Providers({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
   const theme =
     cookieStore.get("theme")?.value === "light" ? "light" : "dark";
-  const copyFormatRaw = cookieStore.get("copyFormat")?.value;
-  const copyFormat =
-    copyFormatRaw === "react" ? "react" : copyFormatRaw === "shadcn" ? "shadcn" : "svg";
+  const copyFormat = parseCopyFormat(cookieStore.get("copyFormat")?.value);
 
   return (
     <ThemeProvider initialTheme={theme}>
