@@ -6,6 +6,7 @@ import {
 } from "@/lib/icons/queries";
 import { renderIconSvg } from "@/lib/icons/svg";
 import { svgToReactComponent } from "@/lib/icons/react";
+import { recordEvents } from "@/lib/analytics/events";
 
 function makeIconContent(
   fullName: string,
@@ -25,6 +26,10 @@ async function handleSingleIcon(fullName: string) {
   if (!icon) {
     return NextResponse.json({ error: "Icon not found" }, { status: 404 });
   }
+
+  recordEvents([
+    { eventType: "registry", source: "web", fullName, format: "shadcn" },
+  ]);
 
   const content = makeIconContent(fullName, icon);
   const slashName = fullName.replace(":", "/");
@@ -58,6 +63,12 @@ async function handleCollection(prefix: string) {
       { status: 404 }
     );
   }
+
+  // One event for the pull, not one per icon: a collection is thousands of
+  // files, and counting each would drown every other number on /stats.
+  recordEvents([
+    { eventType: "registry", source: "web", prefix, format: "shadcn" },
+  ]);
 
   const files: { path: string; type: string; content: string; target: string }[] = [];
   const exports: { componentName: string; fileName: string }[] = [];

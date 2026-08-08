@@ -6,6 +6,8 @@ import { icons, collections } from "../lib/db/schema";
 import { renderIconSvg } from "../lib/icons/svg";
 import { svgToReactComponent } from "../lib/icons/react";
 import { fail, ok, parseJsonSafe } from "../lib/mcp/response";
+import { recordEvents } from "../lib/analytics/events";
+import { mcpCaller } from "../lib/analytics/mcp-caller";
 
 const MAX_BATCH = 20;
 
@@ -67,7 +69,7 @@ export function registerGetIcon(server: McpServer) {
       },
       annotations: { readOnlyHint: true, idempotentHint: true },
     },
-    async ({ name, format, size }) => {
+    async ({ name, format, size }, extra) => {
       try {
         const ids = (Array.isArray(name) ? name : [name]).map((n) => n.trim()).filter(Boolean);
         if (ids.length === 0) {
@@ -82,6 +84,18 @@ export function registerGetIcon(server: McpServer) {
           const detail = missing.map((m) => `${m.fullName} (${m.error})`).join(", ");
           return fail("NOT_FOUND", `${detail}. Use search-icons for valid ids.`);
         }
+
+        // Only the ids that resolved: a typo is not a choice.
+        const caller = mcpCaller(extra);
+        recordEvents(
+          found.map((r) => ({
+            eventType: "get" as const,
+            source: "mcp" as const,
+            fullName: r.fullName,
+            format,
+            ...caller,
+          })),
+        );
 
         const blocks = found.map((r) => `${r.header}\n${r.code}`);
         if (missing.length > 0) {
