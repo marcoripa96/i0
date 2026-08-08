@@ -69,6 +69,24 @@ export type CollectionSummary = {
   license: { title: string; spdx?: string; url?: string } | null;
 };
 
+/**
+ * A parameterised `IN (…)` list for a raw `sql` template.
+ *
+ * `= ANY(${list})` looks like the natural spelling and is wrong: Drizzle expands
+ * a JS array into a row constructor, `($1, $2, $3)`, and Postgres rejects that
+ * as the right-hand side of ANY with 42809. Casting does not help — the value is
+ * a row, not a mistyped array. `inArray()` is no use either, because these
+ * queries alias the table (`icons i`) while `inArray` emits `"icons"."prefix"`.
+ *
+ * Callers must reject an empty list first: `IN ()` is a syntax error.
+ */
+function inList(values: string[]) {
+  return sql.join(
+    values.map((v) => sql`${v}`),
+    sql`, `,
+  );
+}
+
 export async function getCollectionSummaries(): Promise<CollectionSummary[]> {
   "use cache";
   cacheLife("max");
@@ -574,7 +592,7 @@ export async function browseByCategory(
         i.category,
         i.tags
       FROM icons i
-      WHERE i.category = ${category} AND i.prefix = ANY(${prefixList})
+      WHERE i.category = ${category} AND i.prefix IN (${inList(prefixList)})
       ORDER BY i.prefix ASC, i.name ASC
       LIMIT ${limit + 1} OFFSET ${offset}
     `);
@@ -646,7 +664,7 @@ export async function browseAllIcons(
         i.category,
         i.tags
       FROM icons i
-      WHERE i.prefix = ANY(${prefixList})
+      WHERE i.prefix IN (${inList(prefixList)})
       ORDER BY i.prefix ASC, i.name ASC
       LIMIT ${limit + 1} OFFSET ${offset}
     `);
