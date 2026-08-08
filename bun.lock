@@ -31,7 +31,7 @@
         "zod": "4.3.6",
       },
       "devDependencies": {
-        "@iconify/json": "2.2.439",
+        "@iconify/json": "2.2.512",
         "@iconify/types": "2.0.0",
         "@tailwindcss/postcss": "^4",
         "@types/bun": "^1.3.9",
@@ -235,7 +235,7 @@
 
     "@humanwhocodes/retry": ["@humanwhocodes/retry@0.4.3", "", {}, "sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ=="],
 
-    "@iconify/json": ["@iconify/json@2.2.439", "", { "dependencies": { "@iconify/types": "*", "pathe": "^2.0.3" } }, "sha512-DFpo7ZqntngeDaVFtsj+AydUrJoEPW0FIpMrmngo3iHxLXpqcNe5lhztPqvVBoXllbohomcA1YRjRO/ljo7AnQ=="],
+    "@iconify/json": ["@iconify/json@2.2.512", "", { "dependencies": { "@iconify/types": "*", "pathe": "^2.0.3" } }, "sha512-4+qj62xPgv2EN1et18wT7EPfTa/lN4o4CMupdKBncmPyl7BhBmSexgBWGRPzoX7WkX+l72AkaxJHJaKaaKI+xg=="],
 
     "@iconify/types": ["@iconify/types@2.0.0", "", {}, "sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg=="],
 
