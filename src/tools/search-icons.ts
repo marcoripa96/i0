@@ -5,6 +5,8 @@ import { db } from "../lib/db/connection";
 import { icons, collections, user } from "../lib/db/schema";
 import { hybridSearch } from "../lib/icons/search";
 import { fail, ok, type ToolResult } from "../lib/mcp/response";
+import { recordEvents } from "../lib/analytics/events";
+import { mcpCaller } from "../lib/analytics/mcp-caller";
 
 const MAX_OFFSET = 1000;
 
@@ -105,9 +107,9 @@ export function registerSearchIcons(server: McpServer) {
           return fail("NOT_FOUND", `No collection "${prefix}". Use list-collections for valid prefixes.`);
         }
 
-        const userId = extra.authInfo?.extra?.userId as string | undefined;
-        if (userId) {
-          const usageError = await checkAndIncrementUsage(userId);
+        const caller = mcpCaller(extra);
+        if (caller.userId) {
+          const usageError = await checkAndIncrementUsage(caller.userId);
           if (usageError) return fail(usageError.code, usageError.message);
         }
 
@@ -135,6 +137,20 @@ export function registerSearchIcons(server: McpServer) {
         const rows = await hybridSearch(q, prefix, cat, limit, offset, lic);
         if (rows === null) {
           return fail("INVALID_PARAMS", "Query has no searchable terms. Try words like 'home' or 'arrow'.");
+        }
+
+        // Logged on the first page only: paging through one search is still
+        // one search, and counting the pages would inflate every query.
+        if (offset === 0) {
+          recordEvents([
+            {
+              eventType: "search",
+              source: "mcp",
+              query: q,
+              resultCount: Math.min(rows.length, limit),
+              ...caller,
+            },
+          ]);
         }
 
         return render(rows, limit, offset);

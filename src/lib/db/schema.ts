@@ -172,6 +172,12 @@ export const apiToken = pgTable(
     tokenHash: text("token_hash").notNull().unique(),
     scopes: text("scopes").notNull().default('["icons:read"]'),
     lastUsedAt: timestamp("last_used_at"),
+    // Whatever the MCP client called itself in its last `initialize` — the
+    // handler is stateless, so the token row is where that identity is kept
+    // between the initialize request and the tool calls that follow it.
+    clientName: text("client_name"),
+    clientVersion: text("client_version"),
+    clientSeenAt: timestamp("client_seen_at"),
     revokedAt: timestamp("revoked_at"),
     userId: text("user_id")
       .notNull()
@@ -185,6 +191,53 @@ export const apiToken = pgTable(
     index("api_token_revokedAt_idx").on(table.revokedAt),
   ],
 );
+
+/**
+ * One row per time somebody picked an icon, from either surface. Deliberately
+ * denormalised and free of foreign keys to `icons`: collections are re-seeded
+ * wholesale (seed.ts deletes every row), and the history has to outlive that.
+ *
+ * `userId` is nullable and SET NULL on delete — aggregates survive an account
+ * being removed, and nothing here is ever shown per-user on the public page.
+ */
+export const iconEvents = pgTable(
+  "icon_events",
+  {
+    id: serial("id").primaryKey(),
+    // "get" | "copy" | "search" | "registry"
+    eventType: text("event_type").notNull(),
+    // "mcp" | "web"
+    source: text("source").notNull(),
+    // Null for searches, and for a whole-collection registry pull.
+    fullName: text("full_name"),
+    prefix: text("prefix"),
+    // MCP client identity ("claude-code", "cursor-vscode", …); null on web.
+    client: text("client"),
+    clientVersion: text("client_version"),
+    query: text("query"),
+    resultCount: integer("result_count"),
+    // "svg" | "react" | "shadcn"
+    format: text("format"),
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("icon_events_created_at_idx").on(table.createdAt),
+    // Every leaderboard on /stats is "group by X over a window", so the window
+    // column trails the grouping one in each of these.
+    index("icon_events_type_created_at_idx").on(table.eventType, table.createdAt),
+    index("icon_events_full_name_created_at_idx").on(table.fullName, table.createdAt),
+    index("icon_events_source_created_at_idx").on(table.source, table.createdAt),
+    index("icon_events_user_id_idx").on(table.userId),
+  ],
+);
+
+export const iconEventsRelations = relations(iconEvents, ({ one }) => ({
+  user: one(user, {
+    fields: [iconEvents.userId],
+    references: [user.id],
+  }),
+}));
 
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
