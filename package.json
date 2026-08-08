@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
     "seed": "bun run src/lib/db/seed.ts",
     "seed:embeddings": "bun run src/lib/db/seed-embeddings.ts"
   },

@@ -1,0 +1,27 @@
+# Applies the Drizzle migrations in `drizzle/` and exits. Run once per deploy,
+# after the database is healthy and before the app starts.
+#
+# Carries no application code. `drizzle.config.ts` names
+# `./src/lib/db/schema.ts`, but `drizzle-kit migrate` never resolves it —
+# applying migrations reads only `drizzle/` and the state recorded in
+# `drizzle.__drizzle_migrations`. Verified by building this image without `src/`
+# and migrating a fresh database with it.
+FROM oven/bun:1.3.0-alpine
+
+WORKDIR /app
+
+# All three pinned to the repo's versions. drizzle-kit generates the migrations,
+# so a migrator ahead of it can read journal formats the repo does not produce
+# yet. The other two are not optional despite nothing here importing them:
+# drizzle-kit resolves them at run time and exits 1 with "Please install latest
+# version of drizzle-orm" / "please install either of 'pg', 'postgres', ..."
+# without them. `postgres` (postgres.js) is the driver the app uses.
+RUN bun init -y > /dev/null 2>&1 && \
+    bun add drizzle-kit@0.31.9 drizzle-orm@0.45.1 postgres@3.4.8
+
+COPY drizzle ./drizzle
+COPY drizzle.config.ts ./drizzle.config.ts
+
+# Exits non-zero if a migration fails or the database is unreachable, so the
+# deploy stops rather than starting the app against a half-migrated database.
+CMD ["bunx", "drizzle-kit", "migrate"]

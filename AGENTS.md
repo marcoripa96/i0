@@ -6,7 +6,9 @@ Next.js app with an MCP server. Serves 200k+ icons from 150+ open-source collect
 
 ```bash
 docker compose up -d       # Start PostgreSQL 18 (pgvector + pg_textsearch)
-bunx drizzle-kit push      # Push schema to PG (creates tables + HNSW index)
+bun run db:migrate         # Apply drizzle/ migrations (what production runs)
+bun run db:generate        # Write a migration after changing schema.ts
+bun run db:push            # Local-only shortcut; see the gotcha before using
 bun run seed               # Seed PG from @iconify/json (required before first run)
 bun run seed:embeddings    # Generate vector embeddings for all icons (requires GOOGLE_API_KEY)
 bun run build              # Build for production (next build)
@@ -29,7 +31,9 @@ The handler is configured with `basePath: ""`, which resolves its streamable-HTT
 - `next.config.ts` — Next.js config
 - `Dockerfile.pg` — PostgreSQL 18 image with pgvector + pg_textsearch
 - `docker-compose.yml` — Docker Compose for local PostgreSQL
-- `docker/init.sql` — Creates pgvector and pg_textsearch extensions
+- `docker/init.sql` — Creates pgvector and pg_textsearch extensions (first container init only)
+- `Dockerfile.migrate` — Migrator image: applies `drizzle/` and exits, carries no app code
+- `drizzle/` — Drizzle migrations. `0000_init` + `0001_search_indexes`
 - `src/app/mcp/route.ts` — MCP endpoint: server construction, tool/prompt registration, and token auth
 - `src/app/page.tsx` — Landing page
 - `src/lib/db/schema.ts` — Drizzle table definitions (`collections`, `icons`) with pgvector and HNSW index
@@ -103,6 +107,9 @@ Keep responses lean — they are billed to every agent on every call:
 
 - **The connection pool is tuned for app and database on one host**: `connection.ts` sets `max: 10`, `idle_timeout: 300`, `connect_timeout: 10`, `prepare: true`, all sized for the deployment where the app talks to Postgres over loopback with nothing pooling in front. Two of them have to move together with the topology: put a transaction-mode pooler (pgbouncer et al.) in front and `prepare` must become `false`, since consecutive queries can land on different backends; run more than one app instance and `max` is no longer the whole of `max_connections` (100) to spend. `idle_timeout` is 300 rather than 60 because a fresh connection costs ~14ms to first result against ~0.5ms pooled, and at this traffic a 60s timeout would charge that to roughly a quarter of requests.
 - **`mcp-handler` pins the MCP SDK**: it peers `@modelcontextprotocol/sdk` at exactly `1.26.0`, so do not float that dependency to a newer release.
+- **Production applies migrations, not `push`**: `docker compose run --rm migrate` between bringing `db` up and starting the app. The migrator reads only `drizzle/` and `drizzle.__drizzle_migrations`, so `bun run db:generate` must be run and committed with every `schema.ts` change — `scripts/release.sh` aborts the release otherwise. The migrate service builds its `DATABASE_URL` from `POSTGRES_*` against host `db`, deliberately not reusing the app's, which points at localhost.
+- **Extensions are not in the migrations**: `vector` and `pg_textsearch` come from `docker/init.sql`, which runs only on first init of an empty data directory. A database not provisioned by compose fails on the HNSW and BM25 index statements.
+- **`bun run seed` needs devDependencies**: `seed.ts` imports `@iconify/json` (395MB), a devDependency, so a `--production` install cannot seed. It creates `icons_bm25_idx` with `IF NOT EXISTS`, so it no-ops against the migration's copy.
 - **`drizzle-kit push` drops indexes it cannot see in `schema.ts`**: every index must be declared there, including `icons_bm25_idx`, which is also created by `seed.ts`. Losing it breaks every query against the `icons` table. Rebuild with `CREATE INDEX icons_bm25_idx ON icons USING bm25(search_text) WITH (text_config='english')` (~7s).
 - **`pg_textsearch` is pinned in `Dockerfile.pg`** (`PG_TEXTSEARCH_REF`, currently `v1.3.1`). The clone used to track `main`, so rebuilding the image moved it 1.0.0-dev -> 1.4.0-dev and picked up a library-version guard that broke a database which had worked for months. Bump the ref deliberately, never by rebuilding.
 - **`shared_preload_libraries` must include `pg_textsearch`**: both compose files set it via `command: postgres -c shared_preload_libraries=pg_textsearch`. Passed on the command line rather than baked into the image so it applies to clusters that already exist. Without it, `CREATE EXTENSION pg_textsearch` fails during init and the container exits; on a cluster where the extension already exists, every query against `icons` fails — not just BM25 search, since the index makes the extension mandatory for any scan of the table.
