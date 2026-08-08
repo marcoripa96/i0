@@ -1,5 +1,5 @@
 {
-  "id": "735ca697-28e0-4dee-a952-675b07c4e699",
+  "id": "06ca4a87-81b9-4b67-923b-5ed03fc3648c",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -605,6 +605,39 @@
           "concurrently": false,
           "method": "hnsw",
           "with": {}
+        },
+        "icons_name_pattern_idx": {
+          "name": "icons_name_pattern_idx",
+          "columns": [
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_pattern_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "icons_bm25_idx": {
+          "name": "icons_bm25_idx",
+          "columns": [
+            {
+              "expression": "search_text",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "bm25",
+          "with": {
+            "text_config": "english"
+          }
         }
       },
       "foreignKeys": {},

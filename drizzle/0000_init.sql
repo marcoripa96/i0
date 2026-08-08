@@ -110,5 +110,7 @@ CREATE INDEX "icons_category_idx" ON "icons" USING btree ("category");--> statem
 CREATE INDEX "icons_category_prefix_name_idx" ON "icons" USING btree ("category","prefix","name");--> statement-breakpoint
 CREATE INDEX "icons_prefix_category_idx" ON "icons" USING btree ("prefix","category");--> statement-breakpoint
 CREATE INDEX "icons_embedding_idx" ON "icons" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "icons_name_pattern_idx" ON "icons" USING btree ("name" text_pattern_ops);--> statement-breakpoint
+CREATE INDEX "icons_bm25_idx" ON "icons" USING bm25 ("search_text") WITH (text_config=english);--> statement-breakpoint
 CREATE INDEX "session_userId_idx" ON "session" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "verification_identifier_idx" ON "verification" USING btree ("identifier");
