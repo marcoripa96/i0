@@ -23,6 +23,32 @@ services:
     networks:
       - i0_network
 
+  # Applies the Drizzle migrations and exits. Run it between bringing the
+  # database up and starting the app:
+  #
+  #   docker compose -f docker-compose.prod.yml up -d db
+  #   docker compose -f docker-compose.prod.yml run --rm migrate
+  #
+  # `run --rm` rather than `up`, so the exit code reaches the deploy: a failed
+  # migration must stop it, not leave a dead container beside a running app.
+  migrate:
+    image: ${REGISTRY}/${REGISTRY_PATH}/i0-migrate:i0-${I0_VERSION:-latest}
+    # Waits for the healthcheck, which is also what guarantees docker/init.sql
+    # has finished creating the vector and pg_textsearch extensions — the
+    # migration's HNSW and BM25 indexes need them to already exist.
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Built from the same POSTGRES_* the database uses, deliberately not
+      # reusing the app's DATABASE_URL: that one points at localhost, which
+      # inside this container is the container itself. The host here is the
+      # compose service name.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    restart: "no"
+    networks:
+      - i0_network
+
 volumes:
   i0-pgdata:
     name: ${I0_DB_VOLUME:-i0-pgdata}

@@ -17,11 +17,55 @@ if [[ -z "$REGISTRY" || -z "$REGISTRY_PATH" ]]; then
   exit 1
 fi
 
+# Abort the release if schema.ts has changes that no migration covers.
+#
+# This is the failure that shipped card #285: two indexes were added to
+# schema.ts and applied with `drizzle-kit push`, so `drizzle/` no longer built a
+# working database and nobody noticed until someone asked. `drizzle-kit
+# generate` writing a file here means exactly that drift.
+#
+# Generates into a scratch directory seeded with the real `drizzle/meta`, so the
+# comparison is against recorded migration state without touching it. The
+# DATABASE_URL is a dummy: generate diffs snapshots and never connects, and the
+# timeout catches it if a future version tries to.
+check_pending_migrations() {
+  echo -e "${BLUE}Checking for pending database migrations...${NC}"
+
+  local check_dir=".migration-check"
+  rm -rf "$check_dir"
+  mkdir -p "$check_dir"
+  cp -r drizzle/meta "$check_dir/meta"
+
+  local gen_exit=0
+  timeout 30 env DATABASE_URL="postgresql://check@localhost/check" \
+    bunx drizzle-kit generate --schema ./src/lib/db/schema.ts --dialect postgresql \
+    --out "$check_dir" < /dev/null > /dev/null 2>&1 || gen_exit=$?
+
+  local has_pending=false
+  if ls "$check_dir"/*.sql > /dev/null 2>&1; then
+    has_pending=true
+  elif [[ "$gen_exit" -ne 0 ]]; then
+    # A generate that cannot run is not proof of a clean schema.
+    has_pending=true
+  fi
+
+  rm -rf "$check_dir"
+
+  if [[ "$has_pending" = true ]]; then
+    echo -e "${RED}ERROR: Schema has changes without a corresponding migration.${NC}"
+    echo "Run: bun run db:generate"
+    exit 1
+  fi
+
+  echo -e "${GREEN}Schema is in sync with migrations.${NC}"
+}
+
 show_usage() {
   echo "Usage: ./scripts/release.sh <service> <version> [options]"
   echo ""
   echo "Services:"
   echo "  db, postgres    - PostgreSQL 18 with pgvector + pg_textsearch"
+  echo "  migrate         - Drizzle migrator, applies drizzle/ and exits"
   echo ""
   echo "Options:"
   echo "  --dry-run        Show what would be built without executing"
@@ -60,6 +104,12 @@ case "$1" in
     SERVICE_NAME="PostgreSQL (pgvector + pg_textsearch)"
     declare -A DOCKER_BUILDS=(
       ["pg18-pg_textsearch"]="Dockerfile.pg"
+    )
+    ;;
+  migrate)
+    SERVICE_NAME="Drizzle migrator"
+    declare -A DOCKER_BUILDS=(
+      ["i0-migrate"]="Dockerfile.migrate"
     )
     ;;
   "")
@@ -116,6 +166,10 @@ if [[ "$DRY_RUN" = true ]]; then
   show_dry_run
   exit 0
 fi
+
+# Before anything is built or pushed. Applies to every service: releasing a
+# database image against a schema that has no migration is the same bug.
+check_pending_migrations
 
 # Build and push images
 build_images() {
