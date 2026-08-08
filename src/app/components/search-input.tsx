@@ -163,7 +163,7 @@ export function SearchInput({
             placeholder="search icons and collections..."
             value={query}
             onChange={(e) => handleQueryChange(e.target.value)}
-            className="h-10 pl-7 font-mono text-sm bg-background"
+            className="h-10 pl-7 font-mono text-base sm:text-sm bg-background"
           />
         </div>
         <div className="flex flex-wrap items-end gap-3 sm:flex-nowrap">
@@ -214,7 +214,7 @@ export function SearchInput({
               <Command>
                 <CommandInput
                   placeholder="search collections..."
-                  className="font-mono text-xs"
+                  className="font-mono text-base sm:text-xs"
                 />
                 <CommandList>
                   <CommandEmpty className="font-mono text-xs">
@@ -266,7 +266,7 @@ export function SearchInput({
               <Command>
                 <CommandInput
                   placeholder="search categories..."
-                  className="font-mono text-xs"
+                  className="font-mono text-base sm:text-xs"
                 />
                 <CommandList>
                   <CommandEmpty className="font-mono text-xs">
@@ -315,7 +315,7 @@ export function SearchInput({
               <Command>
                 <CommandInput
                   placeholder="search licenses..."
-                  className="font-mono text-xs"
+                  className="font-mono text-base sm:text-xs"
                 />
                 <CommandList>
                   <CommandEmpty className="font-mono text-xs">

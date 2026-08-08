@@ -1,7 +1,8 @@
 import { renderIconSvg } from "./svg";
 import { svgToReactComponent } from "./react";
+import type { CopyFormat } from "./copy-format";
 
-export type CopyFormat = "svg" | "react" | "shadcn";
+export type { CopyFormat };
 
 /**
  * Builds the copyable code for an icon. Pure — no DB, no network — so the
@@ -13,6 +14,10 @@ export function buildIconCode(
   icon: { body: string; width: number; height: number },
   format: CopyFormat,
 ): string {
+  if (format === "name") {
+    return fullName;
+  }
+
   if (format === "shadcn") {
     return `npx shadcn@latest add @icons0/${fullName.replace(":", "/")}`;
   }

@@ -2,14 +2,13 @@
 
 import { createContext, useContext, useState, useCallback, useMemo, useRef } from "react";
 import { setCopyFormat as setCopyFormatCookie } from "@/app/actions";
-
-type CopyFormat = "svg" | "react" | "shadcn";
+import { DEFAULT_COPY_FORMAT, type CopyFormat } from "@/lib/icons/copy-format";
 
 const CopyFormatContext = createContext<{
   format: CopyFormat;
   setFormat: (f: CopyFormat) => void;
 }>({
-  format: "svg",
+  format: DEFAULT_COPY_FORMAT,
   setFormat: () => {},
 });
 
@@ -21,7 +20,9 @@ const CopyFormatContext = createContext<{
  * grid — reads it from here instead. Switching format then re-renders the
  * selector alone rather than several hundred inline SVGs.
  */
-const CopyFormatRefContext = createContext<{ current: CopyFormat }>({ current: "svg" });
+const CopyFormatRefContext = createContext<{ current: CopyFormat }>({
+  current: DEFAULT_COPY_FORMAT,
+});
 
 export function CopyFormatProvider({
   initialFormat,

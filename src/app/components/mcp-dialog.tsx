@@ -35,6 +35,25 @@ const harnesses: Harness[] = [
       `claude mcp add icons0 \\\n  --header "Authorization: Bearer ${token}" \\\n  --transport http \\\n  ${url}`,
   },
   {
+    id: "opencode",
+    name: "OpenCode",
+    configPath: "opencode.json",
+    getConfig: (url, token) =>
+      JSON.stringify(
+        {
+          mcp: {
+            icons0: {
+              type: "remote",
+              url,
+              headers: { Authorization: `Bearer ${token}` },
+            },
+          },
+        },
+        null,
+        2
+      ),
+  },
+  {
     id: "codex",
     name: "Codex",
     configPath: "~/.codex/config.toml",
