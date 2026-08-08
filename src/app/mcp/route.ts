@@ -130,7 +130,7 @@ const mcpHandler = createMcpHandler(
   },
   // Without this the server introduces itself as mcp-handler's placeholder,
   // "mcp-typescript server on vercel".
-  { serverInfo: { name: "icons0", version: "0.1.0" } },
+  { serverInfo: { name: "icons0", version: "0.2.0" } },
   {
     // basePath "" resolves the streamable HTTP endpoint to "/mcp", which is this
     // route's own path — the published URL clients are already configured with.
