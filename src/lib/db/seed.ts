@@ -1,5 +1,5 @@
 import { db } from "./connection";
-import { collections, icons } from "./schema";
+import { collections } from "./schema";
 import { sql } from "drizzle-orm";
 import { lookupCollections, locate } from "@iconify/json";
 import type { IconifyJSON } from "@iconify/types";
@@ -16,6 +16,29 @@ const COLLECTION_LIMIT = parseInt(process.env.SEED_LIMIT || "0") || 0;
  * seeded without asking; a populated one is left alone unless this is set.
  */
 const FORCE = process.env.SEED_FORCE === "1";
+
+/**
+ * Escape one value for COPY's text format.
+ *
+ * The rows go to the server as a tab-separated stream, so anything that could
+ * be read as a delimiter has to be escaped: backslash first (or it would
+ * double-escape the sequences added after it), then the three characters that
+ * would otherwise end a field or a row. SVG bodies are the ones that actually
+ * contain them.
+ */
+function copyEscape(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+}
+
+function copyField(value: string | number | null): string {
+  if (value === null) return "\\N";
+  if (typeof value === "number") return String(value);
+  return copyEscape(value);
+}
 
 function buildTags(
   name: string,
@@ -76,9 +99,10 @@ async function seed() {
   );
   const startTime = Date.now();
 
-  // Clear existing data
-  await db.delete(icons);
-  await db.delete(collections);
+  // TRUNCATE rather than DELETE: it reclaims the space immediately instead of
+  // leaving 341k dead tuples for autovacuum, and it resets the `icons.id`
+  // sequence, so a re-seed produces the same ids as a first seed.
+  await db.execute(sql`TRUNCATE icons, collections RESTART IDENTITY`);
 
   // Load collection data from @iconify/json
   const allCollections = await lookupCollections();
@@ -110,37 +134,66 @@ async function seed() {
     `Loaded ${collectionData.length}/${prefixes.length} collections`,
   );
 
-  // Insert collections
-  for (const { prefix, info, data } of collectionData) {
-    const defaultHeight =
-      data.height ||
-      (data.info?.height as number | undefined) ||
-      null;
-    await db.insert(collections).values({
-      prefix,
-      name: info.name || prefix,
-      total: info.total || Object.keys(data.icons).length,
-      author: info.author ? JSON.stringify(info.author) : null,
-      license: info.license ? JSON.stringify(info.license) : null,
-      category: info.category || null,
-      palette: info.palette ? true : false,
-      height: typeof defaultHeight === "number" ? Math.round(defaultHeight) : null,
-      version: info.version || null,
-      samples: info.samples ? JSON.stringify(info.samples) : null,
-    });
-  }
+  // One statement for all 223 rows rather than 223 round trips.
+  await db.insert(collections).values(
+    collectionData.map(({ prefix, info, data }) => {
+      const defaultHeight =
+        data.height ||
+        (data.info?.height as number | undefined) ||
+        null;
+      return {
+        prefix,
+        name: info.name || prefix,
+        total: info.total || Object.keys(data.icons).length,
+        author: info.author ? JSON.stringify(info.author) : null,
+        license: info.license ? JSON.stringify(info.license) : null,
+        category: info.category || null,
+        palette: info.palette ? true : false,
+        height:
+          typeof defaultHeight === "number" ? Math.round(defaultHeight) : null,
+        version: info.version || null,
+        samples: info.samples ? JSON.stringify(info.samples) : null,
+      };
+    }),
+  );
   console.log(`Inserted ${collectionData.length} collections`);
 
-  // Insert icons in batches
+  // Icons go in through COPY, not INSERT.
+  //
+  // The rows are known-good generated data with no conflict handling to do, so
+  // the per-statement work INSERT pays for — parse, plan, round trip, one
+  // transaction per batch — is pure overhead repeated 1,700 times. COPY streams
+  // the whole table in one statement and one transaction.
+  //
+  // Written as a tab-separated text stream: `body` is the only field that
+  // regularly contains characters needing escaping, and copyEscape handles it.
+  //
+  // Worth ~2.7x on the full 341k rows (67-73s -> 23-28s, interleaved runs on
+  // one container). What is left is almost all index maintenance, measured by
+  // COPYing the same file into a table carrying one index at a time: 5.7s with
+  // none, +1s for each of the six btrees, +0.3s for the HNSW (every embedding
+  // is null at seed time), +8.6s for the BM25. Dropping the BM25 index around
+  // the load is not the win it looks like — rebuilding it afterwards costs ~7s
+  // of the 8.6 back, and it would leave the table unqueryable in the middle of
+  // a deploy.
+  const stream = await db.$client`
+    COPY icons (prefix, name, full_name, body, width, height, category, tags, search_text)
+    FROM STDIN
+  `.writable();
+
   let totalIcons = 0;
-  const BATCH_SIZE = 200;
-  let iconBatch: Array<typeof icons.$inferInsert> = [];
+  const CHUNK_ROWS = 2000;
+  let rows: string[] = [];
 
   async function flushBatch() {
-    if (iconBatch.length === 0) return;
-    const batch = iconBatch;
-    iconBatch = [];
-    await db.insert(icons).values(batch);
+    if (rows.length === 0) return;
+    const chunk = rows.join("");
+    rows = [];
+    // Respect backpressure — without this the whole 500MB of SVG bodies is
+    // buffered in the process while the socket drains at its own pace.
+    if (!stream.write(chunk)) {
+      await new Promise((resolve) => stream.once("drain", resolve));
+    }
   }
 
   for (const { prefix, data } of collectionData) {
@@ -177,34 +230,42 @@ async function seed() {
       const fullName = `${prefix}:${iconName}`;
       const searchText = buildSearchText(iconName, tags, category, prefix, fullName);
 
-      iconBatch.push({
-        prefix,
-        name: iconName,
-        fullName,
-        body: iconData.body,
-        width,
-        height,
-        category,
-        tags,
-        searchText,
-      });
+      rows.push(
+        [
+          copyField(prefix),
+          copyField(iconName),
+          copyField(fullName),
+          copyField(iconData.body),
+          copyField(width),
+          copyField(height),
+          copyField(category),
+          copyField(tags),
+          copyField(searchText),
+        ].join("\t") + "\n",
+      );
       totalIcons++;
 
-      if (iconBatch.length >= BATCH_SIZE) {
+      if (rows.length >= CHUNK_ROWS) {
         await flushBatch();
-        if (totalIcons % 10000 === 0) {
+        if (totalIcons % 50000 < CHUNK_ROWS) {
           console.log(`  ...${totalIcons} icons processed`);
         }
       }
     }
   }
 
-  // Flush remaining icons
   await flushBatch();
+  stream.end();
+  await new Promise<void>((resolve, reject) => {
+    stream.on("finish", resolve);
+    stream.on("error", reject);
+  });
   console.log(`Inserted ${totalIcons} icons`);
 
-  // Build BM25 index
-  console.log("Building BM25 index...");
+  // A no-op against a database built from `drizzle/`, which creates this index
+  // before the seeder ever runs. Kept for the one case it still covers: a
+  // developer database brought up some other way, where losing this index makes
+  // every query against `icons` fail rather than just search.
   await db.execute(
     sql`CREATE INDEX IF NOT EXISTS icons_bm25_idx ON icons USING bm25(search_text) WITH (text_config='english')`
   );
