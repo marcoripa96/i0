@@ -71,7 +71,12 @@ export default function RootLayout({
         <Suspense>
           <Providers>{children}</Providers>
         </Suspense>
-        <Toaster position="bottom-right" duration={2000} />
+        {/* Lifted clear of the floating stats button, which sits in the same
+            corner: at the default offset a copy toast lands on top of it, and
+            copying fires one every time. Both offsets are needed — sonner
+            switches to mobileOffset under 600px, where the toast is also
+            taller because it spans the width. See components/stats-fab.tsx. */}
+        <Toaster position="bottom-right" duration={2000} offset={72} mobileOffset={72} />
         <Analytics />
       </body>
     </html>

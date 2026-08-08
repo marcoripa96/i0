@@ -26,6 +26,7 @@ import { LicenseBadge } from "./components/license-badge";
 import { InstallCommand } from "./components/install-command";
 import { LazySignature } from "./components/lazy-signature";
 import { McpDialog } from "./components/mcp-dialog";
+import { StatsFab } from "./components/stats-fab";
 import { UserMenu } from "./components/user-menu";
 import {
   SearchTransitionProvider,
@@ -374,16 +375,20 @@ export default function Home({
             <pre className="text-lg font-bold leading-none tracking-tighter text-foreground">
               icons0</pre><span className="text-sm font-normal leading-none tracking-tighter text-muted-foreground/40 transition-colors group-hover:text-muted-foreground">.dev</span>
           </a>
-          <div className="flex items-center gap-2">
+          {/* nowrap on the container so every label is unbreakable by
+              inheritance — without it a 320px viewport splits "[ko-fi]" across
+              two lines mid-word. flex-wrap then moves whole items down instead,
+              which is the graceful version of running out of room. */}
+          <div className="flex flex-wrap items-center justify-end gap-2 whitespace-nowrap">
             <ThemeToggle />
+            {/* [ko-fi] stays out of the desktop-only group so a phone can
+                still reach it. [mcp] and [github] are what a phone can spare:
+                one opens a dialog full of copyable config, the other leaves
+                for a repo. /stats has its own floating button. */}
             <span className="hidden sm:flex items-center gap-2">
               <McpDialog />
-              <Link
-                href="/stats"
-                className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
-              >
-                [stats]
-              </Link>
+            </span>
+            <span className="hidden sm:flex items-center gap-2">
               <a
                 href="https://github.com/marcoripa96/i0"
                 target="_blank"
@@ -392,15 +397,15 @@ export default function Home({
               >
                 [github]
               </a>
-              <a
-                href="https://ko-fi.com/marcoripamonti"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
-              >
-                [ko-fi]
-              </a>
             </span>
+            <a
+              href="https://ko-fi.com/marcoripamonti"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              [ko-fi]
+            </a>
             {/* UserMenu awaits headers() for the session. Behind its own
                 boundary the rest of the header still belongs to the prefetched
                 shell; without it the whole route blocks on the session. The
@@ -460,6 +465,8 @@ export default function Home({
           <LazySignature />
         </div>
       </footer>
+
+      <StatsFab />
     </div>
   );
 }
