@@ -66,6 +66,7 @@ show_usage() {
   echo "Services:"
   echo "  db, postgres    - PostgreSQL 18 with pgvector + pg_textsearch"
   echo "  migrate         - Drizzle migrator, applies drizzle/ and exits"
+  echo "  seed            - Database seeder, populates an empty database"
   echo ""
   echo "Options:"
   echo "  --dry-run        Show what would be built without executing"
@@ -110,6 +111,12 @@ case "$1" in
     SERVICE_NAME="Drizzle migrator"
     declare -A DOCKER_BUILDS=(
       ["i0-migrate"]="Dockerfile.migrate"
+    )
+    ;;
+  seed)
+    SERVICE_NAME="Database seeder"
+    declare -A DOCKER_BUILDS=(
+      ["i0-seed"]="Dockerfile.seed"
     )
     ;;
   "")

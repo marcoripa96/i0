@@ -23,14 +23,15 @@ services:
     networks:
       - i0_network
 
-  # Applies the Drizzle migrations and exits. Run it between bringing the
-  # database up and starting the app:
+  # Deploying is one command — the database comes up, migrations apply, and an
+  # empty database is seeded, in that order:
   #
-  #   docker compose -f docker-compose.prod.yml up -d db
-  #   docker compose -f docker-compose.prod.yml run --rm migrate
+  #   docker compose -f docker-compose.prod.yml up -d
   #
-  # `run --rm` rather than `up`, so the exit code reaches the deploy: a failed
-  # migration must stop it, not leave a dead container beside a running app.
+  # `migrate` and `seed` are one-shot: they run to completion and exit, and
+  # compose orders them with service_completed_successfully, so a failed
+  # migration stops the seed rather than pointing it at a half-built schema.
+  # Both are safe to re-run — see the note on `seed` for what protects the data.
   migrate:
     image: ${REGISTRY}/${REGISTRY_PATH}/i0-migrate:i0-${I0_VERSION:-latest}
     # Waits for the healthcheck, which is also what guarantees docker/init.sql
@@ -44,6 +45,25 @@ services:
       # reusing the app's DATABASE_URL: that one points at localhost, which
       # inside this container is the container itself. The host here is the
       # compose service name.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    restart: "no"
+    networks:
+      - i0_network
+
+  # Populates an empty database, then exits.
+  #
+  # Safe on every deploy because seed.ts counts the icons table first and does
+  # nothing when it is already populated. That guard matters: the script begins
+  # by deleting every row, so without it a routine `up` would rebuild 303k rows
+  # and blank the site while it ran. Re-seed deliberately with:
+  #
+  #   docker compose -f docker-compose.prod.yml run --rm -e SEED_FORCE=1 seed
+  seed:
+    image: ${REGISTRY}/${REGISTRY_PATH}/i0-seed:i0-${I0_VERSION:-latest}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     restart: "no"
     networks:

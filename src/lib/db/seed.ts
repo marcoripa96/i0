@@ -7,6 +7,16 @@ import fs from "fs";
 
 const COLLECTION_LIMIT = parseInt(process.env.SEED_LIMIT || "0") || 0;
 
+/**
+ * Re-seed a database that already holds icons.
+ *
+ * Off by default because this script starts by deleting every row: it runs
+ * unattended as a deploy step, and a `docker compose up` that quietly wiped
+ * production would be the worst possible failure mode. An empty database is
+ * seeded without asking; a populated one is left alone unless this is set.
+ */
+const FORCE = process.env.SEED_FORCE === "1";
+
 function buildTags(
   name: string,
   prefix: string,
@@ -44,6 +54,21 @@ function buildSearchText(
 }
 
 async function seed() {
+  // Checked before anything is deleted, so an accidental run against a
+  // populated database is a no-op rather than a rebuild.
+  const [{ count }] = await db.execute<{ count: number }>(
+    sql`SELECT count(*)::int AS count FROM icons`,
+  );
+  if (count > 0 && !FORCE) {
+    console.log(
+      `Database already has ${count} icons — nothing to do. Set SEED_FORCE=1 to re-seed from scratch.`,
+    );
+    return;
+  }
+  if (count > 0) {
+    console.log(`SEED_FORCE=1: replacing ${count} existing icons.`);
+  }
+
   console.log(
     COLLECTION_LIMIT
       ? `Seeding icon database (limit: ${COLLECTION_LIMIT} collections)...`
@@ -188,7 +213,13 @@ async function seed() {
   console.log(`Done! ${totalIcons} icons seeded in ${elapsed}s`);
 }
 
-seed().catch((err) => {
-  console.error("Seed failed:", err);
-  process.exit(1);
-});
+// The pool has to be closed explicitly or the process lingers until
+// `idle_timeout` (300s) expires with its work already done — which made a
+// no-op guarded run look like a five-minute hang, and would stall the deploy,
+// since compose waits for this container to exit before continuing.
+seed()
+  .catch((err) => {
+    console.error("Seed failed:", err);
+    process.exitCode = 1;
+  })
+  .finally(() => db.$client.end());

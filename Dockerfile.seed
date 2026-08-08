@@ -1,0 +1,33 @@
+# Populates an empty database and exits. Runs after the migrator, as the last
+# step of a deploy.
+#
+# Large by nature: @iconify/json is ~395MB of icon data and is the whole point
+# of this image. It is a devDependency of the app precisely so the runtime never
+# carries it, so this image — not the app — is where it belongs.
+FROM oven/bun:1.3.0-alpine
+
+WORKDIR /app
+
+# Exactly what seed.ts reaches at run time — not `bun install`, which pulls
+# Next, React and the rest of the devDependencies and produced a 1.76GB image
+# for a script that imports three packages.
+#
+# Versions are read out of the app's package.json rather than written here, so
+# bumping @iconify/json in one place cannot leave the seeder shipping stale icon
+# data. Its own layer, so the ~395MB of icons is not refetched when the script
+# changes.
+COPY package.json /tmp/app-package.json
+RUN v() { grep -oE "\"$1\": *\"[^\"]+\"" /tmp/app-package.json | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'; }; \
+    bun init -y > /dev/null 2>&1 && \
+    bun add "@iconify/json@$(v '@iconify/json')" \
+            "drizzle-orm@$(v 'drizzle-orm')" \
+            "postgres@$(v 'postgres')" && \
+    rm /tmp/app-package.json
+
+# Only what seed.ts actually reaches: the script, the table definitions and the
+# connection. No Next.js app, no React.
+COPY src/lib/db/seed.ts src/lib/db/schema.ts src/lib/db/connection.ts ./src/lib/db/
+
+# Exits 0 without touching anything if the database already holds icons, so
+# re-running a deploy cannot rebuild a healthy database. SEED_FORCE=1 overrides.
+CMD ["bun", "run", "src/lib/db/seed.ts"]
