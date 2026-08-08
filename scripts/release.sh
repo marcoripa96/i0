@@ -70,20 +70,27 @@ show_usage() {
   echo ""
   echo "Options:"
   echo "  --dry-run        Show what would be built without executing"
+  echo "  --yes, -y        Skip the confirmation prompt (required to run unattended)"
   echo ""
   echo "Examples:"
   echo "  ./scripts/release.sh db 0.1.0"
   echo "  ./scripts/release.sh db 0.1.0 --dry-run"
+  echo "  ./scripts/release.sh db 0.1.0 --yes    # CI, agents, anything without a terminal"
 }
 
 # Parse flags
 DRY_RUN=false
+ASSUME_YES=false
 POSITIONAL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run)
       DRY_RUN=true
+      shift
+      ;;
+    --yes|-y)
+      ASSUME_YES=true
       shift
       ;;
     -h|--help|help)
@@ -99,6 +106,46 @@ done
 
 # Restore positional arguments
 set -- "${POSITIONAL_ARGS[@]}"
+
+# The progress display repaints itself with tput and reads a prompt with gum,
+# neither of which means anything without a terminal: run from CI or an agent it
+# writes escape codes into a log and blocks on a confirmation nobody can answer.
+# So the script picks its output style from what it is actually attached to,
+# rather than assuming a human is watching.
+INTERACTIVE=true
+if [[ ! -t 1 ]] || ! command -v gum > /dev/null 2>&1; then
+  INTERACTIVE=false
+fi
+
+# Every message goes through these, so there is one release flow with two
+# renderings rather than two flows that can drift apart.
+emit() { # emit <color> <text>
+  if [[ "$INTERACTIVE" = true ]]; then gum style --foreground "$1" "$2"; else echo "$2"; fi
+}
+
+emit_bold() { # emit_bold <color> <text>
+  if [[ "$INTERACTIVE" = true ]]; then gum style --foreground "$1" --bold "$2"; else echo "$2"; fi
+}
+
+# Without a terminal there is nobody to answer, and the safe reading of silence
+# is no. --yes is how an unattended caller says it meant to push.
+#
+# 0 yes, 1 the human declined, 2 nobody could be asked. The caller has to tell
+# those last two apart: a declined release is a success (nothing was meant to
+# happen), but one that could not even ask is a failure, and exiting 0 there
+# would report a push that never occurred.
+confirm() { # confirm <question>
+  if [[ "$ASSUME_YES" = true ]]; then
+    echo "$1 yes (--yes)"
+    return 0
+  fi
+  if [[ "$INTERACTIVE" = true ]]; then
+    gum confirm "$1"
+    return $?
+  fi
+  echo "Refusing to build and push unattended. Re-run with --yes." >&2
+  return 2
+}
 
 case "$1" in
   db|postgres)
@@ -178,8 +225,72 @@ fi
 # database image against a schema that has no migration is the same bug.
 check_pending_migrations
 
-# Build and push images
+# Build and push images.
+#
+# Two renderings of the same work: the TUI repaints a live tail per image and is
+# what you get at a terminal; the plain one streams the build output as it
+# arrives, which is what a log wants. Both build the same tags and both fail the
+# same way.
 build_images() {
+  if [[ "$INTERACTIVE" = true ]]; then
+    build_images_tui
+  else
+    build_images_plain
+  fi
+}
+
+# Sequential and unadorned. Builds are streamed rather than captured and printed
+# at the end, so a multi-minute image build does not look like a hang.
+build_images_plain() {
+  local log_dir failed=()
+  log_dir=$(mktemp -d)
+
+  for package in "${!DOCKER_BUILDS[@]}"; do
+    local dockerfile="${DOCKER_BUILDS[$package]}"
+    local image_tag
+    if [[ "$package" == "pg18-pg_textsearch" ]]; then
+      image_tag="pg-$VERSION"
+    else
+      image_tag="i0-$VERSION"
+    fi
+    local image_name="$REGISTRY/$REGISTRY_PATH/$package:$image_tag"
+    local image_latest="$REGISTRY/$REGISTRY_PATH/$package:latest"
+
+    echo ""
+    echo "==> $image_name"
+
+    local rc=0
+    set +e
+    docker buildx build \
+      --pull \
+      --push \
+      -t "$image_name" \
+      -t "$image_latest" \
+      -f "$dockerfile" . 2>&1 | tee "$log_dir/$package.log" | sed 's/^/    /'
+    rc=${PIPESTATUS[0]}
+    set -e
+
+    if [[ "$rc" -ne 0 ]]; then
+      echo "    FAILED (exit $rc)"
+      failed+=("$package")
+    else
+      echo "    pushed $image_tag and latest"
+    fi
+  done
+
+  rm -rf "$log_dir"
+
+  if [[ ${#failed[@]} -gt 0 ]]; then
+    echo ""
+    echo "Build failed for: ${failed[*]}" >&2
+    exit 1
+  fi
+
+  echo ""
+  echo "✓ All images built and pushed successfully!"
+}
+
+build_images_tui() {
   local log_dir
   log_dir=$(mktemp -d)
 
@@ -348,7 +459,7 @@ build_images() {
 # Cleanup function to remove local images
 cleanup_local_images() {
   echo ""
-  gum style --foreground 245 "Cleaning up local images..."
+  emit 245 "Cleaning up local images..."
   for package in "${!DOCKER_BUILDS[@]}"; do
     if [[ "$package" == "pg18-pg_textsearch" ]]; then
       image_tag="pg-$VERSION"
@@ -358,14 +469,14 @@ cleanup_local_images() {
     docker rmi "$REGISTRY/$REGISTRY_PATH/$package:$image_tag" 2>/dev/null || true
     docker rmi "$REGISTRY/$REGISTRY_PATH/$package:latest" 2>/dev/null || true
   done
-  gum style --foreground 245 "Cleanup done."
+  emit 245 "Cleanup done."
 }
 
 # Set trap to cleanup on any exit
 trap cleanup_local_images EXIT
 
 echo ""
-gum style --foreground 212 --bold "icons0 Release"
+emit_bold 212 "icons0 Release"
 echo ""
 echo "Service: $SERVICE_NAME"
 echo "Version: $VERSION"
@@ -378,16 +489,17 @@ for package in "${!DOCKER_BUILDS[@]}"; do
   else
     image_tag="i0-$VERSION"
   fi
-  gum style --foreground 214 "  [BUILD] $REGISTRY/$REGISTRY_PATH/$package:$image_tag"
+  emit 214 "  [BUILD] $REGISTRY/$REGISTRY_PATH/$package:$image_tag"
 done
 echo ""
 
-if ! gum confirm "Build and push images?"; then
-  gum style --foreground 226 "Aborted."
-  exit 0
+confirm "Build and push images?" || confirm_rc=$?
+if [[ "${confirm_rc:-0}" -ne 0 ]]; then
+  emit 226 "Aborted."
+  exit $(( confirm_rc == 2 ? 1 : 0 ))
 fi
 
 build_images
 
 echo ""
-gum style --foreground 82 --bold "✓ Pushed $SERVICE_NAME $VERSION"
+emit_bold 82 "✓ Pushed $SERVICE_NAME $VERSION"
