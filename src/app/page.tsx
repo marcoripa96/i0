@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import {
   getCollectionSummaries,
   getIconCount,
@@ -377,6 +378,12 @@ export default function Home({
             <ThemeToggle />
             <span className="hidden sm:flex items-center gap-2">
               <McpDialog />
+              <Link
+                href="/stats"
+                className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                [stats]
+              </Link>
               <a
                 href="https://github.com/marcoripa96/i0"
                 target="_blank"

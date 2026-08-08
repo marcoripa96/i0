@@ -45,6 +45,11 @@ The handler is configured with `basePath: ""`, which resolves its streamable-HTT
 - `src/lib/icons/react.ts` — Converts SVG to typed React component string (regex-based, following icones project pattern)
 - `src/lib/icons/search.ts` — Hybrid BM25 + semantic vector search
 - `src/lib/mcp/response.ts` — Tool result helpers (`ok`, `fail`, `table`)
+- `src/lib/analytics/events.ts` — `recordEvents()`: fire-and-forget writes to `icon_events`
+- `src/lib/analytics/mcp-caller.ts` — Resolves who is calling a tool (client name, version, user)
+- `src/lib/analytics/queries.ts` — The cached aggregates behind `/stats`
+- `src/app/stats/` — Public statistics page and its chart vocabulary
+- `src/app/api/events/route.ts` — Copy-button beacon; the only way a web copy reaches the server
 - `src/tools/` — MCP tools (search-icons, get-icon, list-collections, list-licenses)
 - `src/prompts/` — Agent guidance prompts
 
@@ -57,6 +62,7 @@ Local PostgreSQL 18 with pgvector and pg_textsearch extensions. ~303k icons, 223
 - `icons_bm25_idx` — BM25 index on `search_text` column (`text_config='english'`)
 - `icons_name_pattern_idx` — btree on `name` with `text_pattern_ops`, serving the `name LIKE 'arro%'` prefix arm of web search
 - `icons_embedding_idx` — HNSW vector index on `embedding` column (`vector_cosine_ops`)
+- `icon_events` table — one row per icon picked or searched: event_type (`get`/`copy`/`search`/`registry`), source (`mcp`/`web`), full_name, prefix, client, query, result_count, format, user_id, created_at. No FK to `icons`, because re-seeding deletes every icon row and the history has to outlive it.
 
 JSON columns (`author`, `license`, `samples`) are stored as text strings and parsed at query time. Use `(col::jsonb)->>'key'` for JSON access in raw SQL.
 
@@ -98,6 +104,25 @@ Keep responses lean — they are billed to every agent on every call:
 - Vector queries use pgvector: `await db.execute(sql\`SELECT ... ORDER BY embedding <=> ${vec}::vector\`)`
 - All DB operations are async
 - PG drizzle returns arrays directly (no `.all()` or `.get()` methods)
+
+### Usage stats
+
+`/stats` is public and reads only aggregates of `icon_events`. Every write goes
+through `recordEvents()`, which never blocks or fails its caller.
+
+Capture points: `get-icon` and `search-icons` (MCP), the copy button (via the
+`/api/events` beacon — copying is client-side, so nothing else observes it),
+web search (logged in the page component, **not** in `searchIconsWeb`, which
+runs under `use cache`), and `/r/[...name]` (one row per pull, not per icon).
+
+**Identifying the MCP client**: clients introduce themselves in `initialize`,
+but `mcp-handler` builds a fresh `McpServer` per POST with no
+`sessionIdGenerator`, so `getClientVersion()` inside a tool handler is always
+`undefined` — that server was never introduced to anyone. `/mcp` parks
+`clientInfo` on the `api_token` row (`client_name`, `client_version`,
+`client_seen_at`) and `verifyToken` carries it back out through `AuthInfo.extra`.
+Clients that send no `clientInfo` fall back to their User-Agent. The client app
+is all that is knowable; the model behind it is not.
 
 ## Environment Variables
 
