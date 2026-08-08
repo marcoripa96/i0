@@ -381,7 +381,13 @@ export default function Home({
                 [ko-fi]
               </a>
             </span>
-            <UserMenu />
+            {/* UserMenu awaits headers() for the session. Behind its own
+                boundary the rest of the header still belongs to the prefetched
+                shell; without it the whole route blocks on the session. The
+                fallback reserves the control's height so nothing shifts. */}
+            <Suspense fallback={<span className="block h-5 w-16" />}>
+              <UserMenu />
+            </Suspense>
           </div>
         </div>
 
