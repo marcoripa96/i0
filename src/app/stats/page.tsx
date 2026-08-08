@@ -342,17 +342,20 @@ export default function StatsPage() {
             <pre className="text-lg font-bold leading-none tracking-tighter text-foreground">
               icons0</pre><span className="text-sm font-normal leading-none tracking-tighter text-muted-foreground/40 transition-colors group-hover:text-muted-foreground">.dev</span>
           </Link>
-          <div className="flex items-center gap-2">
+          {/* See the home header: nowrap by inheritance, wrap whole items. */}
+          <div className="flex flex-wrap items-center justify-end gap-2 whitespace-nowrap">
             <ThemeToggle />
             <span className="hidden sm:flex items-center gap-2">
               <McpDialog />
-              <Link
-                href="/"
-                className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
-              >
-                [search]
-              </Link>
             </span>
+            {/* The way back, so a phone that lands here is not relying on the
+                wordmark being recognised as a link. */}
+            <Link
+              href="/"
+              className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              [search]
+            </Link>
           </div>
         </div>
 

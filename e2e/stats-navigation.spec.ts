@@ -19,7 +19,7 @@ test("navigating from the search view to /stats paints without a round trip", as
   page,
 }) => {
   await page.goto("/");
-  const link = page.getByRole("link", { name: "[stats]" });
+  const link = page.getByRole("link", { name: "Usage statistics" });
   await expect(link).toBeVisible();
 
   await instant(page, async () => {
