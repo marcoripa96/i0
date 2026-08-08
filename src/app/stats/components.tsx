@@ -146,63 +146,6 @@ export function RankRow({
   );
 }
 
-/**
- * Humans against agents as one part-to-whole bar.
- *
- * Two segments, so identity cannot ride on shade alone: the human half is
- * solid ink, the agent half is the dot field the site already uses as its page
- * texture, and both are labelled in place. A 2px gap in the surface colour
- * separates them rather than a stroke.
- */
-export function SplitBar({ human, agent }: { human: number; agent: number }) {
-  const total = human + agent;
-  const humanPct = total > 0 ? (human / total) * 100 : 50;
-  const agentPct = 100 - humanPct;
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex h-10 w-full">
-        <div
-          className="flex items-center bg-foreground pl-3"
-          style={{ width: `${humanPct}%` }}
-          title={`humans · ${human.toLocaleString()}`}
-        >
-          {humanPct > 18 ? (
-            <span className="font-mono text-[10px] tabular-nums text-background">
-              {Math.round(humanPct)}%
-            </span>
-          ) : null}
-        </div>
-        <div className="w-0.5 shrink-0 bg-background" />
-        <div
-          className="dot-field flex items-center justify-end border border-foreground pr-3"
-          style={{ width: `${agentPct}%` }}
-          title={`agents · ${agent.toLocaleString()}`}
-        >
-          {agentPct > 18 ? (
-            // On a solid chip: ink-on-dots is unreadable, and the dot field
-            // has to keep running to the segment's edge to carry the share.
-            <span className="bg-background px-1 font-mono text-[10px] tabular-nums text-foreground">
-              {Math.round(agentPct)}%
-            </span>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        <LegendKey swatch={<span className="block h-3 w-3 bg-foreground" />}>
-          humans copied {human.toLocaleString()}
-        </LegendKey>
-        <LegendKey
-          swatch={<span className="dot-field block h-3 w-3 border border-foreground" />}
-        >
-          agents fetched {agent.toLocaleString()}
-        </LegendKey>
-      </div>
-    </div>
-  );
-}
-
 export function LegendKey({
   swatch,
   children,
@@ -219,7 +162,7 @@ export function LegendKey({
 }
 
 /**
- * Fourteen days of picks, humans stacked under agents.
+ * Fourteen days of agent traffic, fetches stacked under searches.
  *
  * Columns rather than a line: the series is short, integer and gappy, and a
  * line between two quiet days would draw a slope that never happened.
@@ -227,16 +170,16 @@ export function LegendKey({
 export function ActivityChart({
   days,
 }: {
-  days: { day: string; human: number; agent: number }[];
+  days: { day: string; picks: number; searches: number }[];
 }) {
-  const max = Math.max(...days.map((d) => d.human + d.agent), 1);
+  const max = Math.max(...days.map((d) => d.picks + d.searches), 1);
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex h-28 items-end gap-1">
         {days.map((d) => {
-          const total = d.human + d.agent;
-          const label = `${d.day} · ${d.human} human / ${d.agent} agent`;
+          const total = d.picks + d.searches;
+          const label = `${d.day} · ${d.picks} fetched / ${d.searches} searched`;
           return (
             <div key={d.day} className="flex h-full flex-1 flex-col justify-end" title={label}>
               {total === 0 ? (
@@ -251,19 +194,27 @@ export function ActivityChart({
                 >
                   <div
                     className="dot-field w-full border-x border-t border-foreground"
-                    style={{ flexGrow: d.agent }}
+                    style={{ flexGrow: d.searches }}
                   />
-                  {d.agent > 0 && d.human > 0 ? <div className="h-0.5 w-full bg-background" /> : null}
-                  <div className="w-full bg-foreground" style={{ flexGrow: d.human }} />
+                  {d.searches > 0 && d.picks > 0 ? <div className="h-0.5 w-full bg-background" /> : null}
+                  <div className="w-full bg-foreground" style={{ flexGrow: d.picks }} />
                 </div>
               )}
             </div>
           );
         })}
       </div>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <LegendKey swatch={<span className="block h-3 w-3 bg-foreground" />}>
+          icons fetched
+        </LegendKey>
+        <LegendKey swatch={<span className="dot-field block h-3 w-3 border border-foreground" />}>
+          searches
+        </LegendKey>
+      </div>
       <div className="flex items-baseline justify-between border-t border-border pt-2 font-mono text-[10px] text-muted-foreground">
         <span>{days[0]?.day.slice(5)}</span>
-        <span>peak {max.toLocaleString()}/day</span>
+        <span>peak {max.toLocaleString()} calls/day</span>
         <span>today</span>
       </div>
     </div>

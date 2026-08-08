@@ -10,7 +10,6 @@ import {
   getTopSearches,
   getEmptySearches,
   getDailyActivity,
-  type RankedIcon,
 } from "@/lib/analytics/queries";
 import { ThemeToggle } from "../components/theme-toggle";
 import { McpDialog } from "../components/mcp-dialog";
@@ -21,14 +20,13 @@ import {
   MoverRow,
   Panel,
   RankRow,
-  SplitBar,
   Stat,
 } from "./components";
 
 export const metadata: Metadata = {
   title: "stats · icons0.dev",
   description:
-    "What humans and AI agents actually pick: the most-taken icons, the collections that win, and which agents are shopping.",
+    "What AI agents actually pick: the most-fetched icons, the collections that win, and which MCP clients are calling.",
 };
 
 function iconHref(fullName: string) {
@@ -43,14 +41,13 @@ async function Headline() {
     return (
       <div className="border border-border p-8">
         <EmptyState>
-          nothing picked yet. counting starts the moment somebody copies an icon
-          or an agent calls get-icon — come back once the room fills up.
+          no agent has been shopping yet. counting starts the first time a
+          connected MCP client calls get-icon — come back once the room fills up.
         </EmptyState>
       </div>
     );
   }
 
-  const agentShare = o.picks > 0 ? Math.round((o.agent / o.picks) * 100) : 0;
   const since = o.since
     ? o.since.toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : "—";
@@ -63,37 +60,42 @@ async function Headline() {
           {o.picks.toLocaleString()}
         </p>
         <p className="font-mono text-xs text-muted-foreground">
-          icons taken since {since} · {agentShare}% of them by something that
-          isn&apos;t a person
+          icons fetched by agents since {since} · across{" "}
+          {o.distinctAgents.toLocaleString()} MCP{" "}
+          {o.distinctAgents === 1 ? "client" : "clients"}
         </p>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4">
-        <Stat label="humans" value={o.human.toLocaleString()} sub="copied from the site" />
-        <Stat label="agents" value={o.agent.toLocaleString()} sub="fetched over MCP" />
-        <Stat label="searches" value={o.searches.toLocaleString()} sub="queries typed and asked" />
+        <Stat label="searches" value={o.searches.toLocaleString()} sub="questions asked" />
         <Stat
           label="distinct icons"
           value={o.distinctIcons.toLocaleString()}
-          sub={`out of 300k+`}
+          sub="out of 300k+"
+        />
+        <Stat
+          label="collections"
+          value={o.distinctCollections.toLocaleString()}
+          sub="sets drawn from"
+        />
+        <Stat
+          label="clients"
+          value={o.distinctAgents.toLocaleString()}
+          sub="agents by name"
         />
       </div>
-
-      <Panel title="who is shopping" hint="share of every icon taken">
-        <SplitBar human={o.human} agent={o.agent} />
-      </Panel>
     </div>
   );
 }
 
 async function Activity() {
   const days = await getDailyActivity(14);
-  const total = days.reduce((sum, d) => sum + d.human + d.agent, 0);
+  const total = days.reduce((sum, d) => sum + d.picks + d.searches, 0);
 
   return (
-    <Panel title="the last fortnight" hint="picks per day">
+    <Panel title="the last fortnight" hint="agent calls per day">
       {total === 0 ? (
-        <EmptyState>no picks in the last 14 days.</EmptyState>
+        <EmptyState>no agent traffic in the last 14 days.</EmptyState>
       ) : (
         <ActivityChart days={days} />
       )}
@@ -101,123 +103,42 @@ async function Activity() {
   );
 }
 
-function IconRanking({ icons }: { icons: RankedIcon[] }) {
-  if (icons.length === 0) return <EmptyState>nothing here yet.</EmptyState>;
-  const max = icons[0].picks;
-
-  return (
-    <div className="flex flex-col divide-y divide-border">
-      {icons.map((icon, i) => (
-        <RankRow
-          key={icon.fullName}
-          rank={i + 1}
-          label={icon.fullName}
-          value={icon.picks}
-          max={max}
-          href={iconHref(icon.fullName)}
-          icon={<IconMark body={icon.body} width={icon.width} height={icon.height} />}
-        />
-      ))}
-    </div>
-  );
-}
-
+/**
+ * The leaderboard, with the number of distinct clients beside each count.
+ *
+ * A total on its own is exactly what one agent in a retry loop inflates, and
+ * this page is public. The second number says whether a row is agreement or
+ * repetition, which is the difference between a statistic and a scoreboard.
+ */
 async function Podium() {
-  const icons = await getTopIcons(null, 12);
+  const icons = await getTopIcons(16);
 
   return (
-    <Panel title="most wanted" hint="every source, all time">
-      <IconRanking icons={icons} />
+    <Panel title="most wanted" hint="fetched over MCP, all time">
+      {icons.length === 0 ? (
+        <EmptyState>nothing fetched yet.</EmptyState>
+      ) : (
+        <div className="flex flex-col divide-y divide-border">
+          {icons.map((icon, i) => (
+            <RankRow
+              key={icon.fullName}
+              rank={i + 1}
+              label={icon.fullName}
+              sublabel={`× · ${icon.agents} ${icon.agents === 1 ? "client" : "clients"}`}
+              value={icon.picks}
+              max={icons[0].picks}
+              href={iconHref(icon.fullName)}
+              icon={<IconMark body={icon.body} width={icon.width} height={icon.height} />}
+            />
+          ))}
+        </div>
+      )}
     </Panel>
   );
 }
 
-/**
- * The comparison the page exists for. The two rankings are computed
- * independently and then marked up against each other.
- *
- * The tag marks agreement, not disagreement. Tagging the ids unique to a
- * column was tried first and put a tag on nearly every row — the two
- * audiences overlap that little — which made the mark noise. Consensus is the
- * rare event here, so consensus is what earns the ink.
- */
-async function HeadToHead() {
-  const [human, agent] = await Promise.all([getTopIcons("web", 8), getTopIcons("mcp", 8)]);
-  const humanSet = new Set(human.map((i) => i.fullName));
-  const agentSet = new Set(agent.map((i) => i.fullName));
-
-  const column = (icons: RankedIcon[], otherSet: Set<string>) => {
-    if (icons.length === 0) return <EmptyState>nothing yet.</EmptyState>;
-    const max = icons[0].picks;
-    return (
-      <div className="flex flex-col divide-y divide-border">
-        {icons.map((icon, i) => (
-          <RankRow
-            key={icon.fullName}
-            rank={i + 1}
-            label={icon.fullName}
-            sublabel={otherSet.has(icon.fullName) ? "· agreed" : undefined}
-            value={icon.picks}
-            max={max}
-            href={iconHref(icon.fullName)}
-            icon={<IconMark body={icon.body} width={icon.width} height={icon.height} />}
-          />
-        ))}
-      </div>
-    );
-  };
-
-  return (
-    <div className="grid gap-px sm:grid-cols-2">
-      <Panel title="humans pick" hint="copied from the browser">
-        {column(human, agentSet)}
-      </Panel>
-      <Panel title="agents pick" hint="fetched over MCP">
-        {column(agent, humanSet)}
-      </Panel>
-    </div>
-  );
-}
-
-async function Collections() {
-  const [human, agent] = await Promise.all([
-    getTopCollections("web", 8),
-    getTopCollections("mcp", 8),
-  ]);
-
-  const column = (rows: { prefix: string; name: string; picks: number }[]) => {
-    if (rows.length === 0) return <EmptyState>nothing yet.</EmptyState>;
-    const max = rows[0].picks;
-    return (
-      <div className="flex flex-col divide-y divide-border">
-        {rows.map((row, i) => (
-          <RankRow
-            key={row.prefix}
-            rank={i + 1}
-            label={row.name}
-            value={row.picks}
-            max={max}
-            href={`/?collection=${encodeURIComponent(row.prefix)}`}
-          />
-        ))}
-      </div>
-    );
-  };
-
-  return (
-    <div className="grid gap-px sm:grid-cols-2">
-      <Panel title="human favourite sets" hint="by icons copied">
-        {column(human)}
-      </Panel>
-      <Panel title="agent favourite sets" hint="by icons fetched">
-        {column(agent)}
-      </Panel>
-    </div>
-  );
-}
-
 async function Agents() {
-  const agents = await getAgentLeaderboard(10);
+  const agents = await getAgentLeaderboard(12);
 
   return (
     <Panel title="which agents are calling" hint="from the MCP handshake">
@@ -233,9 +154,34 @@ async function Agents() {
               key={a.client}
               rank={i + 1}
               label={a.client}
-              sublabel={`calls · ${a.icons} icons`}
+              sublabel={`fetched · ${a.icons} distinct · ${a.searches} searches`}
               value={a.calls}
               max={agents[0].calls}
+            />
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+async function Collections() {
+  const rows = await getTopCollections(10);
+
+  return (
+    <Panel title="favourite sets" hint="by icons fetched">
+      {rows.length === 0 ? (
+        <EmptyState>nothing yet.</EmptyState>
+      ) : (
+        <div className="flex flex-col divide-y divide-border">
+          {rows.map((row, i) => (
+            <RankRow
+              key={row.prefix}
+              rank={i + 1}
+              label={row.name}
+              value={row.picks}
+              max={rows[0].picks}
+              href={`/?collection=${encodeURIComponent(row.prefix)}`}
             />
           ))}
         </div>
@@ -251,7 +197,7 @@ async function Movers() {
   return (
     <Panel title="climbing & falling" hint="this week vs last">
       {movers.length === 0 ? (
-        <EmptyState>not enough history yet — this needs two weeks of picks.</EmptyState>
+        <EmptyState>not enough history yet — this needs two weeks of traffic.</EmptyState>
       ) : (
         <div className="flex flex-col divide-y divide-border">
           {movers.map((m) => (
@@ -271,11 +217,11 @@ async function Movers() {
 }
 
 async function Searches() {
-  const [top, empty] = await Promise.all([getTopSearches(10), getEmptySearches(10)]);
+  const [top, empty] = await Promise.all([getTopSearches(12), getEmptySearches(10)]);
 
   return (
     <div className="grid gap-px sm:grid-cols-2">
-      <Panel title="what people ask for" hint="results shown per query">
+      <Panel title="what agents ask for" hint="results shown per query">
         {top.length === 0 ? (
           <EmptyState>no searches yet.</EmptyState>
         ) : (
@@ -361,10 +307,11 @@ export default function StatsPage() {
 
         <div className="flex flex-col gap-1">
           <p className="font-mono text-sm text-foreground">
-            what everyone is actually picking
+            what the agents are picking
           </p>
           <p className="font-mono text-xs text-muted-foreground">
-            humans copy · agents fetch · nobody agrees
+            every number here comes from an authenticated MCP call — nothing a
+            browser does is counted
           </p>
         </div>
       </header>
@@ -383,9 +330,6 @@ export default function StatsPage() {
         </Suspense>
         <Suspense fallback={<PanelSkeleton rows={8} />}>
           <Podium />
-        </Suspense>
-        <Suspense fallback={<PanelSkeleton rows={8} />}>
-          <HeadToHead />
         </Suspense>
         <Suspense fallback={<PanelSkeleton rows={6} />}>
           <Agents />

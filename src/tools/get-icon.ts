@@ -90,7 +90,6 @@ export function registerGetIcon(server: McpServer) {
         recordEvents(
           found.map((r) => ({
             eventType: "get" as const,
-            source: "mcp" as const,
             fullName: r.fullName,
             format,
             ...caller,
