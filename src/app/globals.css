@@ -100,6 +100,16 @@
        reproducibly doubled script time on the format-toggle benchmark. */
     contain-intrinsic-size: 0 88px;
   }
+  /* The agent half of every chart on /stats. The page is monochrome by
+     design, so the second series cannot be "a lighter grey" — at that point
+     length and shade would encode the same thing. It gets the site's own dot
+     field instead: identity by texture, legible in forced-colors and in print,
+     and denser than the 0.035 page wash so it holds at 6px tall. */
+  .dot-field {
+    background-image: radial-gradient(circle, var(--foreground) 1px, transparent 1px);
+    background-size: 4px 4px;
+    background-position: 0 0;
+  }
   body::before {
     content: "";
     position: fixed;
