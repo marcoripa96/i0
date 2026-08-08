@@ -157,6 +157,34 @@ export async function getCollectionCount(
   return parseInt((rows as { count: string }[])[0].count, 10);
 }
 
+/**
+ * How many icons the browse-all view is showing, summed over the collections'
+ * declared totals — the same arithmetic the view used to do for itself.
+ *
+ * It is its own cache entry because the alternative is reading
+ * `getCollectionSummaries` (39 KB of prefixes, names and licences) to add up one
+ * column and throw the rest away. In production a cache entry read costs on the
+ * order of 190ms whatever its size, so the 39 KB was not the expensive part —
+ * the second read was.
+ */
+export async function getIconCount(license?: string): Promise<number> {
+  "use cache";
+  cacheLife("max");
+
+  if (license) {
+    const rows = await db.execute<{ total: string }>(sql`
+      SELECT COALESCE(SUM(total), 0)::text AS total FROM collections
+      WHERE (license::jsonb)->>'title' = ${license}
+    `);
+    return parseInt((rows as { total: string }[])[0].total, 10);
+  }
+
+  const rows = await db.execute<{ total: string }>(sql`
+    SELECT COALESCE(SUM(total), 0)::text AS total FROM collections
+  `);
+  return parseInt((rows as { total: string }[])[0].total, 10);
+}
+
 export async function getCollectionsPage(
   limit = 48,
   offset = 0,

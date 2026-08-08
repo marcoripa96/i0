@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import {
   getCollectionSummaries,
+  getIconCount,
   getCollectionCount,
   getCollectionsPage,
   getSampleIconsBatch,
@@ -259,15 +260,11 @@ async function CollectionsView({ license }: { license?: string }) {
 
 async function BrowseAllIconsView({ license }: { license?: string }) {
   const t0 = performance.now();
-  const [data, allCollections] = await Promise.all([
+  const [data, totalIcons] = await Promise.all([
     browseAllIcons(48, 0, license),
-    getCollectionSummaries(),
+    getIconCount(license),
   ]);
   const durationMs = Math.round(performance.now() - t0);
-  const filtered = license
-    ? allCollections.filter((c) => c.license?.title === license)
-    : allCollections;
-  const totalIcons = filtered.reduce((sum, c) => sum + c.total, 0);
   const results = data.results.map((r) => ({
     fullName: r.fullName,
     name: r.name,
