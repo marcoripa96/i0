@@ -166,7 +166,7 @@ export function SearchInput({
             className="h-10 pl-7 font-mono text-sm bg-background"
           />
         </div>
-        <div className="flex items-end gap-3">
+        <div className="flex flex-wrap items-end gap-3 sm:flex-nowrap">
           <div className="flex flex-col gap-1">
             <label className="font-mono text-[10px] text-muted-foreground/60">scope</label>
             <div className="flex h-10 items-center rounded-md border border-input bg-background p-1">
@@ -195,7 +195,7 @@ export function SearchInput({
               </button>
             </div>
           </div>
-          <div className="flex flex-1 flex-col gap-1 sm:flex-initial">
+          <div className="flex min-w-0 flex-1 basis-[120px] flex-col gap-1 sm:flex-initial sm:basis-auto">
             <label className="font-mono text-[10px] text-muted-foreground/60">collection</label>
             <Popover open={collectionOpen} onOpenChange={setCollectionOpen}>
             <PopoverTrigger asChild>
@@ -247,7 +247,7 @@ export function SearchInput({
             </PopoverContent>
           </Popover>
           </div>
-          <div className="flex flex-1 flex-col gap-1 sm:flex-initial">
+          <div className="flex min-w-0 flex-1 basis-[120px] flex-col gap-1 sm:flex-initial sm:basis-auto">
             <label className="font-mono text-[10px] text-muted-foreground/60">category</label>
             <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
             <PopoverTrigger asChild>
@@ -296,7 +296,7 @@ export function SearchInput({
             </PopoverContent>
           </Popover>
           </div>
-          <div className="flex flex-1 flex-col gap-1 sm:flex-initial">
+          <div className="flex min-w-0 flex-1 basis-[120px] flex-col gap-1 sm:flex-initial sm:basis-auto">
             <label className="font-mono text-[10px] text-muted-foreground/60">license</label>
             <Popover open={licenseOpen} onOpenChange={setLicenseOpen}>
             <PopoverTrigger asChild>
@@ -347,10 +347,10 @@ export function SearchInput({
           </div>
           {hasFilters && (
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={handleReset}
-              className="h-10 gap-1.5 font-mono text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+              className="h-10 w-full basis-full gap-1.5 font-mono text-xs text-muted-foreground hover:text-foreground cursor-pointer sm:w-auto sm:shrink-0 sm:basis-auto"
             >
               reset
               <Kbd className="bg-transparent border border-border text-[10px]">esc</Kbd>
