@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { db } from "../db/connection";
 import { iconEvents } from "../db/schema";
 
@@ -29,7 +30,15 @@ function prefixOf(fullName: string | null | undefined): string | null {
  *
  * Nothing here is awaited by the request that triggered it: an icon must still
  * be delivered when the stats table is unreachable, and the copy button must
- * not wait on a round trip. Callers fire and forget; failures are swallowed.
+ * not wait on a round trip.
+ *
+ * That deferral has to be `after()` rather than a floating promise. A bare
+ * `void db.insert(...)` works on a long-lived server and silently loses every
+ * row on Vercel, where the invocation suspends the moment the response is
+ * returned and the query is abandoned before Postgres sees it — which is
+ * exactly how this shipped, passing locally and recording nothing in
+ * production. `after()` is the platform's contract for post-response work: the
+ * response goes out first, and the invocation is kept alive to finish this.
  */
 export function recordEvents(events: IconEvent[]): void {
   if (events.length === 0) return;
@@ -47,10 +56,19 @@ export function recordEvents(events: IconEvent[]): void {
     userId: e.userId ?? null,
   }));
 
-  void db
-    .insert(iconEvents)
-    .values(rows)
-    .catch(() => {
+  const write = async () => {
+    try {
+      await db.insert(iconEvents).values(rows);
+    } catch {
       // Analytics are never worth failing a request over.
-    });
+    }
+  };
+
+  try {
+    after(write);
+  } catch {
+    // after() requires a request scope. Every caller here has one, but a
+    // script or a test importing this should degrade rather than throw.
+    void write();
+  }
 }
